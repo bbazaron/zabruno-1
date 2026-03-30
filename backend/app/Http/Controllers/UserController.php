@@ -4,8 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\SignUpRequest;
-use App\Services\DTO\LoginDTO;
-use App\Services\DTO\SignUpDTO;
 use App\Services\UserService;
 use Illuminate\Http\Request;
 
@@ -17,39 +15,50 @@ class UserController extends Controller
 
     public function register(SignUpRequest $request)
     {
-        $dto = SignUpDTO::fromRequest($request);
-        $user = $this->userService->signUp($dto);
-        $token = $user->createToken('auth')->plainTextToken;
+        $result = $this->userService->register($request);
 
-        return response()->json([
-            'message' => 'Регистрация успешна',
-            'token' => $token,
-            'user' => $user,
-        ]);
+        return response()->json($result['data'], $result['status']);
     }
 
     public function login(LoginRequest $request)
     {
-        $dto = LoginDTO::fromRequest($request);
-        $user = $this->userService->login($dto);
-        $token = $user->createToken('auth')->plainTextToken;
+        $result = $this->userService->loginAction($request);
 
-        return response()->json([
-            'message' => 'Вход выполнен',
-            'token' => $token,
-            'user' => $user,
-        ]);
+        return response()->json($result['data'], $result['status']);
     }
 
     public function logout(Request $request)
     {
-        $user = $request->user();
-        if ($user !== null) {
-            $this->userService->logout($user);
-        }
+        $result = $this->userService->logoutAction($request);
 
-        return response()->json([
-            'message' => 'Вы вышли из аккаунта',
-        ]);
+        return response()->json($result['data'], $result['status']);
+    }
+
+    public function getUser(Request $request)
+    {
+        $result = $this->userService->getUserAction($request);
+
+        return response()->json($result['data'], $result['status']);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $result = $this->userService->updateProfileAction($request);
+
+        return response()->json($result['data'], $result['status']);
+    }
+
+    public function getAdmins(Request $request)
+    {
+        $result = $this->userService->getAdminsAction($request);
+
+        return response()->json($result['data'], $result['status']);
+    }
+
+    public function createAdmin(Request $request)
+    {
+        $result = $this->userService->createAdminAction($request);
+
+        return response()->json($result['data'], $result['status']);
     }
 }

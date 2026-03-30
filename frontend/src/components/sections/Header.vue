@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Button from '../ui/Button.vue'
 import { Menu, X, LogIn, LogOut, ShoppingBag } from 'lucide-vue-next'
+import { useToast } from '../../composables/useToast'
 
+const { showToast } = useToast()
 const router = useRouter()
 const mobileMenuOpen = ref(false)
 const logoutLoading = ref(false)
@@ -64,6 +66,17 @@ const goToLogin = () => {
   router.push('/login')
 }
 
+function goToOrders() {
+
+  if (!hasAuthToken()) {
+    mobileMenuOpen.value = false
+    router.push('/login')
+    return
+  }
+
+  router.push('/orders')
+}
+
 function openLogoutConfirm() {
   showLogoutConfirm.value = true
 }
@@ -83,14 +96,14 @@ async function performLogout() {
   try {
     if (token) {
       await axios.post(
-        '/api/logout',
-        {},
-        {
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
+          '/api/logout',
+          {},
+          {
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
           },
-        },
       )
     }
   } catch {
@@ -100,6 +113,9 @@ async function performLogout() {
     syncAuthFromStorage()
     mobileMenuOpen.value = false
     logoutLoading.value = false
+
+    showToast('Вы вышли из аккаунта', 'success')
+
     if (router.currentRoute.value.path !== '/') {
       router.replace({ path: '/' })
     }
@@ -158,7 +174,12 @@ async function performLogout() {
           <span class="text-sm font-medium">Выйти</span>
           <LogOut :size="20" class="shrink-0" aria-hidden="true" />
         </button>
-        <Button variant="primary" size="sm" class="hidden sm:inline-flex gap-2">
+        <Button
+          variant="primary"
+          size="sm"
+          class="hidden sm:inline-flex gap-2 cursor-pointer"
+          @click="goToOrders"
+        >
           <ShoppingBag :size="18" />
           <span>Мои заказы</span>
         </Button>
@@ -188,7 +209,7 @@ async function performLogout() {
         >
           {{ item.label }}
         </button>
-        <Button variant="primary" class="w-full">Мои заказы</Button>
+        <Button variant="primary" class="w-full" @click="goToOrders">Мои заказы</Button>
         <button
           v-if="!isLoggedIn"
           type="button"

@@ -1,40 +1,20 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
-import { useRoute, useRouter } from 'vue-router'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
+import { useToast } from '../composables/useToast'
 import axios from 'axios'
 
-const route = useRoute()
 const router = useRouter()
+const { showToast } = useToast()
 
 // Поля формы
 const email = ref('')
 const password = ref('')
 const error = ref('')
-const registeredNotice = ref(false)
-const REGISTERED_NOTICE_MS = 5000
-
-let registeredNoticeTimer: ReturnType<typeof setTimeout> | null = null
-
-onMounted(() => {
-  if (route.query.registered === '1') {
-    registeredNotice.value = true
-    router.replace({ path: '/login', query: {} })
-    registeredNoticeTimer = setTimeout(() => {
-      registeredNotice.value = false
-      registeredNoticeTimer = null
-    }, REGISTERED_NOTICE_MS)
-  }
-})
-
-onUnmounted(() => {
-  if (registeredNoticeTimer !== null) {
-    clearTimeout(registeredNoticeTimer)
-  }
-})
 
 const goToRegister = () => {
   router.push('/signUpForm')
@@ -44,32 +24,20 @@ const goToRegister = () => {
 const login = async () => {
   error.value = ''
   try {
-    const response = await axios.post(
-      '/api/login',
-      {
-        email: email.value,
-        password: password.value,
-      },
-      { headers: { Accept: 'application/json' } },
-    )
+    const response = await axios.post('/api/login', {
+      email: email.value,
+      password: password.value,
+    })
 
     localStorage.setItem('auth_token', response.data.token)
-    localStorage.removeItem('token')
 
-    const redirect = route.query.redirect
-    const safe =
-      typeof redirect === 'string' &&
-      redirect.startsWith('/') &&
-      !redirect.startsWith('//')
-        ? redirect
-        : '/'
-    router.push(safe)
+
+    showToast('Вы вошли в аккаунт!', 'success')
+
+    router.push('/')
+
   } catch (err: any) {
-    if (err.response && err.response.data.message) {
-      error.value = err.response.data.message
-    } else {
-      error.value = 'Ошибка при входе'
-    }
+    showToast('Ошибка входа', 'error')
   }
 }
 </script>
@@ -81,13 +49,6 @@ const login = async () => {
       <Typography as="h1" variant="h2" class="text-slate-900 mb-6 text-center">
         Вход
       </Typography>
-
-      <div
-        v-if="registeredNotice"
-        class="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm text-emerald-800"
-      >
-        Вы зарегистрированы!
-      </div>
 
       <div v-if="error" class="text-red-600 mb-4 text-sm text-center">
         {{ error }}

@@ -6,6 +6,9 @@ import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
+import { useToast } from '../composables/useToast'
+
+const { showToast } = useToast()
 
 const AUTH_TOKEN_KEY = 'auth_token'
 
@@ -43,26 +46,28 @@ async function registerUser() {
 
   loading.value = true
   try {
-    const response = await axios.post(
-      '/api/register',
-      {
-        firstName: firstName.value,
-        lastName: lastName.value,
-        email: email.value,
-        password: password.value,
-      },
-      {
-        headers: { Accept: 'application/json' },
-      },
-    )
+    const response = await axios.post('/api/register', {
+      firstName: firstName.value,
+      lastName: lastName.value,
+      email: email.value,
+      password: password.value,
+    }, {
+      headers: { Accept: 'application/json' },
+    })
+
     const token = response.data?.token
     if (typeof token === 'string' && token.length > 0) {
       localStorage.setItem(AUTH_TOKEN_KEY, token)
     }
-    router.push({ path: '/login', query: { registered: '1' } })
+
+    // ✅ Показываем toast
+    showToast('Вы успешно зарегистрировались! Теперь войдите в аккаунт', 'success')
+
+    router.push('/login') // редирект на страницу логина
   } catch (err: unknown) {
     console.error(err)
     errorMessage.value = formatRegisterError(err)
+    showToast(errorMessage.value, 'error') // тоже через toast
   } finally {
     loading.value = false
   }

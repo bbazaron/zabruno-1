@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Header from '../components/sections/Header.vue'
-import HeroSection from '../components/sections/HeroSection.vue'
 import Footer from '../components/sections/Footer.vue'
+import HeroSection from '../components/sections/HeroSection.vue'
 </script>
 
 <template>

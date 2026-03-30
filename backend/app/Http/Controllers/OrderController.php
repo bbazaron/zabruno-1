@@ -3,38 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreOrderRequest;
-use App\Models\Order;
-use App\Models\User;
+use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
-use Laravel\Sanctum\PersonalAccessToken;
+use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
+    public function __construct(
+        private OrderService $orderService,
+    ) {}
+
     public function createOrder(StoreOrderRequest $request): JsonResponse
     {
-        $validated = $request->validated();
-        $items = $validated['items'];
-        unset($validated['items']);
-
-        $validated['user_id'] = $this->resolveUserId($request);
-
-        $order = DB::transaction(function () use ($validated, $items) {
-            /** @var Order $order */
-            $order = Order::create($validated);
-
-            foreach ($items as $index => $row) {
-                $order->items()->create([
-                    'position' => $index,
-                    'product_name' => $row['product_name'],
-                    'quantity' => (int) $row['quantity'],
-                    'size_override' => $row['size_override'] ?? null,
-                    'line_comment' => $row['line_comment'] ?? null,
-                ]);
-            }
-
-            return $order->load('items');
-        });
+        $order = $this->orderService->createOrder($request, $request->validated());
 
         return response()->json([
             'message' => 'Заказ принят',
@@ -42,23 +23,65 @@ class OrderController extends Controller
         ], 201);
     }
 
-    private function resolveUserId(\Illuminate\Http\Request $request): ?int
+    public function getOrders(\Illuminate\Http\Request $request): JsonResponse
     {
-        $token = $request->bearerToken();
-        if ($token === null || $token === '') {
-            return null;
+        if ($request->user() === null) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 401);
         }
 
-        $accessToken = PersonalAccessToken::findToken($token);
-        if ($accessToken === null) {
-            return null;
+        $orders = $this->orderService->getOrders($request);
+
+        return response()->json([
+            'orders' => $orders,
+        ]);
+    }
+
+    public function getAllOrders(): JsonResponse
+    {
+        $orders = $this->orderService->getAllOrders();
+
+        return response()->json([
+            'orders' => $orders,
+        ]);
+    }
+
+    public function getAdminOrderById(int $id): JsonResponse
+    {
+        $order = $this->orderService->getAdminOrderById($id);
+
+        if ($order === null) {
+            return response()->json([
+                'message' => 'Order not found',
+            ], 404);
         }
 
-        $user = $accessToken->tokenable;
-        if (! $user instanceof User) {
-            return null;
+        return response()->json([
+            'order' => $order,
+        ]);
+    }
+
+    /**
+     * Допустимые значения status заданы в миграции orders (комментарий) и здесь же для валидации.
+     */
+    public function updateAdminOrderStatus(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'max:32', 'in:pending,confirmed,cancelled,completed'],
+        ]);
+
+        $order = $this->orderService->updateAdminOrderStatus($id, $validated['status']);
+
+        if ($order === null) {
+            return response()->json([
+                'message' => 'Order not found',
+            ], 404);
         }
 
-        return $user->id;
+        return response()->json([
+            'message' => 'Статус обновлён',
+            'order' => $order,
+        ]);
     }
 }

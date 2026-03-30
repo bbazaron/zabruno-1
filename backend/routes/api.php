@@ -14,6 +14,20 @@ Route::post('/login', [UserController::class, 'login']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [UserController::class, 'logout']);
+    Route::get('/getUser', [UserController::class, 'getUser']);
+    Route::put('/updateProfile', [UserController::class, 'updateProfile']);
+    Route::get('/getOrders', [OrderController::class, 'getOrders']);
+
+    Route::middleware('role:admin,super_admin')->group(function () {
+        Route::get('/admin/admins', [UserController::class, 'getAdmins']);
+        Route::get('/admin/orders', [OrderController::class, 'getAllOrders']);
+        Route::get('/admin/orders/{id}', [OrderController::class, 'getAdminOrderById']);
+        Route::patch('/admin/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus']);
+    });
+
+    Route::middleware('role:super_admin')->group(function () {
+        Route::post('/admin/admins', [UserController::class, 'createAdmin']);
+    });
 });
 
 Route::get('/index', [ProductController::class, 'index']);

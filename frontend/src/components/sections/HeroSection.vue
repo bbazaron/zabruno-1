@@ -37,10 +37,12 @@ const cards = [
     image: "/images/Home/photo1.png",
   },
 ]
+
 </script>
 
 <template>
   <section class="relative w-full">
+
     <!-- Background Image -->
     <div class="absolute inset-0 w-full h-full overflow-hidden">
       <img
@@ -125,12 +127,12 @@ const cards = [
             <Card
                 v-for="(card, idx) in cards"
                 :key="idx"
-                class="group overflow-hidden h-60 relative cursor-pointer"
+                class=" overflow-hidden h-60 relative cursor-default"
             >
               <img
                   :src="card.image"
                   :alt="card.title"
-                  class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  class="absolute inset-0 w-full h-full object-cover"
               />
               <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <div class="absolute inset-0 p-4 flex flex-col justify-between text-white">
@@ -139,7 +141,6 @@ const cards = [
                   <h3 class="text-lg md:text-xl font-semibold tracking-tight text-white flex-1">
                     {{ card.title }}
                   </h3>
-                  <ArrowRight :size="20" class="text-white flex-shrink-0 ml-3" />
                 </div>
               </div>
             </Card>

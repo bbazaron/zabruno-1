@@ -6,6 +6,13 @@ import ProductPage from '../pages/ProductPage.vue'
 import SignUpForm from '../pages/SignUpForm.vue'
 import LoginForm from '../pages/LoginForm.vue'
 import OrderCheckout from '../pages/OrderCheckout.vue'
+import Orders from '../pages/Orders.vue'
+import OrderDetails from '../pages/OrderDetails.vue'
+import ProfileEdit from '../pages/ProfileEdit.vue'
+import AdminPanel from '../pages/AdminPanel.vue'
+import AllOrders from '../pages/AllOrders.vue'
+import AdminOrderDetails from '../pages/AdminOrderDetails.vue'
+import axios from 'axios'
 
 const routes = [
   {
@@ -43,11 +50,94 @@ const routes = [
         name: 'OrderCheckout',
         component: OrderCheckout,
     },
+    {
+        path: '/orders',
+        name: 'Orders',
+        component: Orders,
+    },
+    {
+        path: '/orders/:id',
+        name: 'OrderDetails',
+        component: OrderDetails,
+    },
+    {
+        path: '/profile',
+        name: 'ProfileEdit',
+        component: ProfileEdit,
+    },
+    {
+        path: '/admin',
+        name: 'AdminPanel',
+        component: AdminPanel,
+        meta: {
+            requiresAuth: true,
+            requiresAdmin: true,
+        },
+    },
+    {
+        path: '/admin/orders',
+        name: 'AllOrders',
+        component: AllOrders,
+        meta: {
+            requiresAuth: true,
+            requiresAdmin: true,
+        },
+    },
+    {
+        path: '/admin/orders/:id',
+        name: 'AdminOrderDetails',
+        component: AdminOrderDetails,
+        meta: {
+            requiresAuth: true,
+            requiresAdmin: true,
+        },
+    },
+
 ]
 
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+function getStoredToken(): string | null {
+  return localStorage.getItem('auth_token') || localStorage.getItem('token')
+}
+
+router.beforeEach(async (to) => {
+  const requiresAuth = Boolean(to.meta.requiresAuth)
+  const requiresAdmin = Boolean(to.meta.requiresAdmin)
+
+  if (!requiresAuth && !requiresAdmin) {
+    return true
+  }
+
+  const token = getStoredToken()
+  if (!token) {
+    return '/login'
+  }
+
+  if (!requiresAdmin) {
+    return true
+  }
+
+  try {
+    const response = await axios.get('/api/getUser', {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const role = response.data?.role
+    if (role === 'admin' || role === 'super_admin') {
+      return true
+    }
+
+    return '/'
+  } catch {
+    return '/login'
+  }
 })
 
 export default router
