@@ -1,0 +1,254 @@
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import axios from 'axios'
+import Button from '../ui/Button.vue'
+import { Menu, X, LogIn, LogOut, ShoppingBag } from 'lucide-vue-next'
+
+const router = useRouter()
+const mobileMenuOpen = ref(false)
+const logoutLoading = ref(false)
+const showLogoutConfirm = ref(false)
+
+function getStoredToken(): string | null {
+  return localStorage.getItem('auth_token') || localStorage.getItem('token')
+}
+
+function clearStoredTokens() {
+  localStorage.removeItem('auth_token')
+  localStorage.removeItem('token')
+}
+
+function hasAuthToken(): boolean {
+  return !!getStoredToken()?.length
+}
+
+const isLoggedIn = ref(false)
+
+function syncAuthFromStorage() {
+  isLoggedIn.value = hasAuthToken()
+}
+
+onMounted(() => {
+  syncAuthFromStorage()
+  window.addEventListener('storage', syncAuthFromStorage)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('storage', syncAuthFromStorage)
+})
+
+watch(
+  () => router.currentRoute.value.fullPath,
+  () => {
+    syncAuthFromStorage()
+  },
+)
+
+const navItems = [
+  { label: 'ШКОЛЬНАЯ ФОРМА', to: '/catalog' },
+  { label: 'КАК ЗАКАЗАТЬ', href: '#how-to-order' },
+  { label: 'О РАЗМЕРЕ', href: '#sizes' },
+  { label: 'О НАС', href: '#about' },
+  { label: 'КОНТАКТЫ', href: '#contacts' },
+]
+
+const navigateTo = (item: { to?: string; href?: string }) => {
+  if (item.to) {
+    router.push(item.to)
+  }
+}
+
+const goToLogin = () => {
+  mobileMenuOpen.value = false
+  router.push('/login')
+}
+
+function openLogoutConfirm() {
+  showLogoutConfirm.value = true
+}
+
+function cancelLogout() {
+  showLogoutConfirm.value = false
+}
+
+async function confirmLogout() {
+  showLogoutConfirm.value = false
+  await performLogout()
+}
+
+async function performLogout() {
+  const token = getStoredToken()
+  logoutLoading.value = true
+  try {
+    if (token) {
+      await axios.post(
+        '/api/logout',
+        {},
+        {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      )
+    }
+  } catch {
+    // всё равно очищаем локальную сессию
+  } finally {
+    clearStoredTokens()
+    syncAuthFromStorage()
+    mobileMenuOpen.value = false
+    logoutLoading.value = false
+    if (router.currentRoute.value.path !== '/') {
+      router.replace({ path: '/' })
+    }
+  }
+}
+</script>
+
+<template>
+  <header class="sticky top-0 bg-white border-b border-neutral-200 z-50">
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+      <!-- Logo -->
+      <div class="flex items-center gap-2 cursor-pointer" @click="router.push('/')">
+        <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+          ШФ
+        </div>
+        <div class="flex flex-col leading-tight">
+          <span class="text-sm font-semibold text-slate-900">ШКОЛЬНАЯ ФОРМА</span>
+          <span class="text-xs text-slate-600">СОБСТВЕННОЕ ПРОИЗВОДСТВО</span>
+        </div>
+      </div>
+
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex items-center gap-8">
+        <button
+          v-for="item in navItems"
+          :key="item.label"
+          type="button"
+          @click="navigateTo(item)"
+          :class="[
+            'text-sm font-medium transition-colors cursor-pointer',
+            item.to ? 'text-slate-600 hover:text-slate-900' : 'text-slate-600 hover:text-slate-900',
+          ]"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+
+      <!-- Right Actions -->
+      <div class="flex items-center gap-4">
+        <button
+          v-if="!isLoggedIn"
+          type="button"
+          class="flex items-center gap-2 px-2 py-2 text-slate-600 hover:text-slate-900 cursor-pointer"
+          @click="goToLogin"
+        >
+          <span class="text-sm font-medium">Войти</span>
+          <LogIn :size="20" class="shrink-0" aria-hidden="true" />
+        </button>
+        <button
+          v-else
+          type="button"
+          class="flex items-center gap-2 px-2 py-2 text-slate-600 hover:text-slate-900 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="logoutLoading"
+          @click="openLogoutConfirm"
+        >
+          <span class="text-sm font-medium">Выйти</span>
+          <LogOut :size="20" class="shrink-0" aria-hidden="true" />
+        </button>
+        <Button variant="primary" size="sm" class="hidden sm:inline-flex gap-2">
+          <ShoppingBag :size="18" />
+          <span>Мои заказы</span>
+        </Button>
+        <button
+          type="button"
+          class="md:hidden p-2 text-slate-600 cursor-pointer"
+          @click="mobileMenuOpen = !mobileMenuOpen"
+        >
+          <Menu v-if="!mobileMenuOpen" :size="24" />
+          <X v-else :size="24" />
+        </button>
+      </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div
+      v-if="mobileMenuOpen"
+      class="md:hidden border-t border-neutral-200 bg-white"
+    >
+      <div class="px-4 py-4 space-y-4">
+        <button
+          v-for="item in navItems"
+          :key="item.label"
+          type="button"
+          @click="navigateTo(item)"
+          class="block w-full text-left text-sm font-medium text-slate-600 hover:text-slate-900 py-2 cursor-pointer"
+        >
+          {{ item.label }}
+        </button>
+        <Button variant="primary" class="w-full">Мои заказы</Button>
+        <button
+          v-if="!isLoggedIn"
+          type="button"
+          class="block w-full text-left text-sm font-medium text-slate-600 hover:text-slate-900 py-2 cursor-pointer"
+          @click="goToLogin"
+        >
+          Войти
+        </button>
+        <button
+          v-else
+          type="button"
+          class="block w-full text-left text-sm font-medium text-slate-600 hover:text-slate-900 py-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="logoutLoading"
+          @click="openLogoutConfirm"
+        >
+          Выйти
+        </button>
+      </div>
+    </div>
+
+    <Teleport to="body">
+      <div
+        v-if="showLogoutConfirm"
+        class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logout-confirm-title"
+      >
+        <div
+          class="absolute inset-0 bg-slate-900/40"
+          @click="cancelLogout"
+        />
+        <div
+          class="relative w-full max-w-sm rounded-lg border border-neutral-200 bg-white p-6 shadow-lg"
+        >
+          <p id="logout-confirm-title" class="text-center text-base font-medium text-slate-900">
+            Выйти из кабинета
+          </p>
+          <div class="mt-6 flex gap-3 justify-center">
+            <Button
+              variant="primary"
+              size="sm"
+              class="min-w-[100px]"
+              :disabled="logoutLoading"
+              @click="confirmLogout"
+            >
+              Да
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              class="min-w-[100px]"
+              :disabled="logoutLoading"
+              @click="cancelLogout"
+            >
+              Нет
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+  </header>
+</template>
