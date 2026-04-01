@@ -11,6 +11,7 @@ const router = useRouter()
 const mobileMenuOpen = ref(false)
 const logoutLoading = ref(false)
 const showLogoutConfirm = ref(false)
+const currentUserRole = ref<'user' | 'admin' | 'manager' | 'super_admin'>('user')
 
 function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
@@ -26,9 +27,36 @@ function hasAuthToken(): boolean {
 }
 
 const isLoggedIn = ref(false)
+const adminOrderRoles = new Set(['admin', 'manager', 'super_admin'])
+
+function canManageOrders(): boolean {
+  return adminOrderRoles.has(currentUserRole.value)
+}
+
+async function syncCurrentUserRole() {
+  const token = getStoredToken()
+  if (!token) {
+    currentUserRole.value = 'user'
+    return
+  }
+
+  try {
+    const response = await axios.get('/api/getUser', {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const role = response.data?.role
+    currentUserRole.value = adminOrderRoles.has(role) ? role : 'user'
+  } catch {
+    currentUserRole.value = 'user'
+  }
+}
 
 function syncAuthFromStorage() {
   isLoggedIn.value = hasAuthToken()
+  void syncCurrentUserRole()
 }
 
 onMounted(() => {
@@ -50,13 +78,14 @@ watch(
 const navItems = [
   { label: 'ШКОЛЬНАЯ ФОРМА', to: '/catalog' },
   { label: 'КАК ЗАКАЗАТЬ', href: '#how-to-order' },
-  { label: 'О РАЗМЕРЕ', href: '#sizes' },
-  { label: 'О НАС', href: '#about' },
-  { label: 'КОНТАКТЫ', href: '#contacts' },
+  { label: 'О РАЗМЕРЕ', to: '/sizes' },
+  { label: 'О НАС', to: '/about' },
+  { label: 'КОНТАКТЫ', to: '/contacts' },
 ]
 
 const navigateTo = (item: { to?: string; href?: string }) => {
   if (item.to) {
+    mobileMenuOpen.value = false
     router.push(item.to)
   }
 }
@@ -74,7 +103,8 @@ function goToOrders() {
     return
   }
 
-  router.push('/orders')
+  router.push(canManageOrders() ? '/admin/orders' : '/orders')
+  mobileMenuOpen.value = false
 }
 
 function openLogoutConfirm() {
@@ -111,6 +141,7 @@ async function performLogout() {
   } finally {
     clearStoredTokens()
     syncAuthFromStorage()
+    currentUserRole.value = 'user'
     mobileMenuOpen.value = false
     logoutLoading.value = false
 
@@ -181,7 +212,7 @@ async function performLogout() {
           @click="goToOrders"
         >
           <ShoppingBag :size="18" />
-          <span>Мои заказы</span>
+          <span>{{ canManageOrders() ? 'Управление заказами' : 'Мои заказы' }}</span>
         </Button>
         <button
           type="button"
@@ -209,7 +240,9 @@ async function performLogout() {
         >
           {{ item.label }}
         </button>
-        <Button variant="primary" class="w-full" @click="goToOrders">Мои заказы</Button>
+        <Button variant="primary" class="w-full" @click="goToOrders">
+          {{ canManageOrders() ? 'Управление заказами' : 'Мои заказы' }}
+        </Button>
         <button
           v-if="!isLoggedIn"
           type="button"

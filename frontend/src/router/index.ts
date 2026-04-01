@@ -12,6 +12,9 @@ import ProfileEdit from '../pages/ProfileEdit.vue'
 import AdminPanel from '../pages/AdminPanel.vue'
 import AllOrders from '../pages/AllOrders.vue'
 import AdminOrderDetails from '../pages/AdminOrderDetails.vue'
+import Contacts from '../pages/Contacts.vue'
+import AboutUs from '../pages/AboutUs.vue'
+import AboutSize from '../pages/AboutSize.vue'
 import axios from 'axios'
 
 const routes = [
@@ -24,6 +27,21 @@ const routes = [
     path: '/catalog',
     name: 'Catalog',
     component: Catalog,
+  },
+  {
+    path: '/contacts',
+    name: 'Contacts',
+    component: Contacts,
+  },
+  {
+    path: '/about',
+    name: 'About',
+    component: AboutUs,
+  },
+  {
+    path: '/sizes',
+    name: 'SizeGuide',
+    component: AboutSize,
   },
     {
         path: '/genderSelect',

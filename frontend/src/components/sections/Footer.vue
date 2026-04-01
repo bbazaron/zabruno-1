@@ -5,15 +5,15 @@
         <div>
           <h3 class="font-semibold mb-4">Компания</h3>
           <ul class="space-y-2 text-sm text-gray-300">
-            <li><a href="#" class="hover:text-white">О нас</a></li>
-            <li><a href="#" class="hover:text-white">Контакты</a></li>
-            <li><a href="#" class="hover:text-white">Карьера</a></li>
+            <li><a href="/about" class="hover:text-white">О нас</a></li>
+            <li><a href="/contacts" class="hover:text-white">Контакты</a></li>
           </ul>
         </div>
         <div>
           <h3 class="font-semibold mb-4">Покупателю</h3>
           <ul class="space-y-2 text-sm text-gray-300">
             <li><a href="#" class="hover:text-white">Как заказать</a></li>
+            <li><a href="/sizes" class="hover:text-white">О размере</a></li>
             <li><a href="#" class="hover:text-white">Доставка</a></li>
             <li><a href="#" class="hover:text-white">Возврат</a></li>
           </ul>

@@ -16,6 +16,7 @@ interface AdminOrder {
   parent_phone?: string
   parent_email?: string
   child_full_name?: string
+  settlement?: string
   school?: string
   user?: {
     id: number
@@ -245,7 +246,7 @@ onMounted(() => {
               <th class="py-2 px-3">Заказчик</th>
               <th class="py-2 px-3">Телефон</th>
               <th class="py-2 px-3">Email</th>
-              <th class="py-2 px-3">Ребенок</th>
+              <th class="py-2 px-3">Город</th>
               <th class="py-2 px-3">Школа</th>
             </tr>
           </thead>
@@ -262,7 +263,7 @@ onMounted(() => {
               <td class="py-2 px-3">{{ order.parent_full_name || order.user?.name || '-' }}</td>
               <td class="py-2 px-3">{{ order.parent_phone || '-' }}</td>
               <td class="py-2 px-3">{{ order.parent_email || order.user?.email || '-' }}</td>
-              <td class="py-2 px-3">{{ order.child_full_name || '-' }}</td>
+              <td class="py-2 px-3">{{ order.settlement || '-' }}</td>
               <td class="py-2 px-3 flex items-center justify-between gap-2">
                 <span>{{ order.school || '-' }}</span>
                 <Button size="sm" variant="primary" @click.stop="openOrder(order.id)">Открыть</Button>

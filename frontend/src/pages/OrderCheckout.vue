@@ -49,10 +49,99 @@ type KitLine = {
   sizeOverride: string
   lineComment: string
 }
+type KitSuggestion = {
+  id: number | null
+  name: string
+  image: string | null
+}
 const kitLines = ref<KitLine[]>([
   { productName: '', quantity: '1', sizeOverride: '', lineComment: '' },
 ])
 const kitComment = ref('')
+const selectedKitLineIndex = ref(0)
+const availableKitSuggestions = ref<KitSuggestion[]>([])
+const kitSuggestionsLoading = ref(false)
+const kitSuggestionsError = ref('')
+
+async function loadKitSuggestions() {
+  if (childGender.value !== 'boy' && childGender.value !== 'girl') {
+    availableKitSuggestions.value = []
+    kitSuggestionsError.value = ''
+    return
+  }
+
+  kitSuggestionsLoading.value = true
+  kitSuggestionsError.value = ''
+
+  try {
+    const response = await axios.get('/api/index', {
+      params: {
+        gender: childGender.value === 'boy' ? 'boys' : 'girls',
+        category: 'Комплекты',
+      },
+    })
+
+    const products = Array.isArray(response.data) ? response.data : []
+    const suggestions = products
+      .map((item: Record<string, unknown>) => {
+        const rawId = item.id
+        let id: number | null = null
+        if (typeof rawId === 'number' && Number.isFinite(rawId)) {
+          id = rawId
+        } else if (typeof rawId === 'string' && rawId.trim() !== '') {
+          const n = Number(rawId)
+          id = Number.isFinite(n) ? n : null
+        }
+        const name = item.name
+        const image = item.image
+        return {
+          id,
+          name: typeof name === 'string' ? name.trim() : '',
+          image: typeof image === 'string' && image.trim() ? image : null,
+        } satisfies KitSuggestion
+      })
+      .filter((item) => Boolean(item.name))
+
+    const uniqueByKey = new Map<string, KitSuggestion>()
+    for (const item of suggestions) {
+      const key = item.id != null ? `id:${item.id}` : `name:${item.name}`
+      if (!uniqueByKey.has(key)) {
+        uniqueByKey.set(key, item)
+      }
+    }
+
+    availableKitSuggestions.value = Array.from(uniqueByKey.values())
+  } catch {
+    availableKitSuggestions.value = []
+    kitSuggestionsError.value = 'Не удалось загрузить комплекты. Можно ввести вручную.'
+  } finally {
+    kitSuggestionsLoading.value = false
+  }
+}
+
+function ensureValidSelectedLineIndex() {
+  if (!kitLines.value.length) {
+    addKitLine()
+  }
+  if (selectedKitLineIndex.value < 0 || selectedKitLineIndex.value >= kitLines.value.length) {
+    selectedKitLineIndex.value = 0
+  }
+}
+
+function applySuggestedKitToSelectedLine(kitName: string) {
+  ensureValidSelectedLineIndex()
+  kitLines.value[selectedKitLineIndex.value].productName = kitName
+}
+
+function addSuggestedKitAsNewLine(kitName: string) {
+  kitLines.value.push({
+    productName: kitName,
+    quantity: '1',
+    sizeOverride: '',
+    lineComment: '',
+  })
+  selectedKitLineIndex.value = kitLines.value.length - 1
+}
 
 function addKitLine() {
   kitLines.value.push({
@@ -61,11 +150,15 @@ function addKitLine() {
     sizeOverride: '',
     lineComment: '',
   })
+  selectedKitLineIndex.value = kitLines.value.length - 1
 }
 
 function removeKitLine(index: number) {
   if (kitLines.value.length > 1) {
     kitLines.value.splice(index, 1)
+    if (selectedKitLineIndex.value >= kitLines.value.length) {
+      selectedKitLineIndex.value = kitLines.value.length - 1
+    }
   }
 }
 
@@ -96,6 +189,10 @@ watch(parentPhone, () => {
     recipientPhone.value = parentPhone.value
   }
 })
+
+watch(childGender, () => {
+  void loadKitSuggestions()
+}, { immediate: true })
 
 // Шаг 6
 const termsAccepted = ref(false)
@@ -223,6 +320,27 @@ function nextStep() {
   }
 }
 
+function goToStep(targetStep: number) {
+  if (targetStep < 1 || targetStep > totalSteps || targetStep === step.value) {
+    return
+  }
+
+  if (targetStep < step.value) {
+    stepError.value = ''
+    step.value = targetStep
+    return
+  }
+
+  for (let s = step.value; s < targetStep; s += 1) {
+    if (!validateStep(s)) {
+      return
+    }
+  }
+
+  stepError.value = ''
+  step.value = targetStep
+}
+
 function prevStep() {
   stepError.value = ''
   if (step.value > 1) {
@@ -313,7 +431,12 @@ const summaryLines = computed(() => {
                 :key="label"
                 class="flex items-center gap-2"
               >
-                <div
+                <button
+                  type="button"
+                  class="flex items-center gap-2 cursor-pointer"
+                  @click="goToStep(i + 1)"
+                >
+                  <div
                   :class="[
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium',
                     step > i + 1
@@ -322,15 +445,16 @@ const summaryLines = computed(() => {
                         ? 'bg-slate-900 text-white'
                         : 'bg-neutral-200 text-slate-600',
                   ]"
-                >
-                  {{ i + 1 }}
-                </div>
-                <span
-                  class="hidden sm:inline text-xs font-medium max-w-[100px] leading-tight"
-                  :class="step === i + 1 ? 'text-slate-900' : 'text-slate-500'"
-                >
-                  {{ label }}
-                </span>
+                  >
+                    {{ i + 1 }}
+                  </div>
+                  <span
+                    class="hidden sm:inline text-xs font-medium max-w-[100px] leading-tight"
+                    :class="step === i + 1 ? 'text-slate-900' : 'text-slate-500'"
+                  >
+                    {{ label }}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -426,6 +550,92 @@ const summaryLines = computed(() => {
             <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
               Шаг 3. Комплект
             </Typography>
+            <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <p class="text-sm font-medium text-slate-800">
+                Доступные комплекты
+                {{ childGender === 'boy' ? 'для мальчиков' : childGender === 'girl' ? 'для девочек' : '' }}
+              </p>
+              <p v-if="!childGender" class="mt-1 text-xs text-slate-500">
+                Выберите пол ребёнка на шаге 1, чтобы увидеть рекомендации.
+              </p>
+              <template v-else>
+                <p class="mt-1 text-xs text-slate-500">
+                  Сейчас выбрано для заполнения: Позиция {{ selectedKitLineIndex + 1 }}.
+                  Клик по фото открывает карточку товара в новой вкладке.
+                </p>
+                <p v-if="kitSuggestionsLoading" class="mt-1 text-xs text-slate-500">
+                  Загружаем доступные комплекты...
+                </p>
+                <p v-else-if="kitSuggestionsError" class="mt-1 text-xs text-red-600">
+                  {{ kitSuggestionsError }}
+                </p>
+                <p v-else-if="availableKitSuggestions.length === 0" class="mt-1 text-xs text-slate-500">
+                  Для выбранного пола пока нет готовых комплектов.
+                </p>
+                <div v-else class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    v-for="kit in availableKitSuggestions"
+                    :key="kit.id != null ? kit.id : kit.name"
+                    class="rounded-md border border-slate-300 bg-white p-2"
+                  >
+                    <div class="flex items-center gap-3">
+                      <a
+                        v-if="kit.id != null"
+                        :href="`/product/${kit.id}`"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="group shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                        :title="'Открыть страницу товара в новой вкладке'"
+                        @click.stop
+                      >
+                        <img
+                          v-if="kit.image"
+                          :src="kit.image"
+                          :alt="kit.name"
+                          class="h-14 w-14 rounded object-cover border border-neutral-200 transition group-hover:ring-2 group-hover:ring-slate-400"
+                        />
+                        <div
+                          v-else
+                          class="flex h-14 w-14 items-center justify-center rounded border border-dashed border-neutral-300 bg-neutral-100 text-[10px] text-slate-500 transition group-hover:ring-2 group-hover:ring-slate-400"
+                        >
+                          фото
+                        </div>
+                      </a>
+                      <template v-else>
+                        <img
+                          v-if="kit.image"
+                          :src="kit.image"
+                          :alt="kit.name"
+                          class="h-14 w-14 rounded object-cover border border-neutral-200 shrink-0"
+                        />
+                        <div
+                          v-else
+                          class="h-14 w-14 rounded border border-dashed border-neutral-300 bg-neutral-100 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </template>
+                      <span class="text-sm text-slate-700">{{ kit.name }}</span>
+                    </div>
+                    <div class="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                        @click="applySuggestedKitToSelectedLine(kit.name)"
+                      >
+                        В текущую позицию
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                        @click="addSuggestedKitAsNewLine(kit.name)"
+                      >
+                        В новую позицию
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
             <div
               v-for="(line, idx) in kitLines"
               :key="idx"
@@ -444,8 +654,17 @@ const summaryLines = computed(() => {
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Наименование изделия</label>
-                <input v-model="line.productName" type="text" :class="inputClass" />
+                <input
+                  v-model="line.productName"
+                  type="text"
+                  :class="inputClass"
+                  :list="availableKitSuggestions.length ? 'kit-name-suggestions' : undefined"
+                  @focus="selectedKitLineIndex = idx"
+                />
               </div>
+              <datalist v-if="availableKitSuggestions.length" id="kit-name-suggestions">
+                <option v-for="kit in availableKitSuggestions" :key="kit.name" :value="kit.name" />
+              </datalist>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-slate-700 mb-1">Количество</label>

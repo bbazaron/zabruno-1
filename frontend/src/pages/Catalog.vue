@@ -48,6 +48,7 @@ const categories = [
   { id: 'vests', name: 'Жилеты' },
   { id: 'skirts', name: 'Юбки' },
   { id: 'pants', name: 'Брюки' },
+  { id: 'Комплекты', name: 'Комплекты' },
 ]
 
 const filteredProducts = computed(() => {
