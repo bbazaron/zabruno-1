@@ -25,6 +25,19 @@ const stepLabels = [
   'Подтверждение',
 ]
 
+/** Краткие пояснения под заголовком шага */
+const stepSubtitles = [
+  'Кто учится и в каком классе — для изготовления формы.',
+  'Размер по таблице и мерки для посадки изделия.',
+  'Выберите позиции комплекта и количество.',
+  'Как с вами связаться по заказу.',
+  'Кто заберёт готовый заказ.',
+  'Проверьте данные и отправьте предзаказ.',
+]
+
+const stepCardClass =
+  'rounded-xl border border-neutral-200/70 bg-neutral-50/50 p-4 sm:p-6 space-y-5'
+
 // Шаг 1
 const childFullName = ref('')
 const childGender = ref<'boy' | 'girl' | ''>('')
@@ -162,6 +175,18 @@ function removeKitLine(index: number) {
   }
 }
 
+function adjustKitLineQuantity(index: number, delta: number) {
+  const line = kitLines.value[index]
+  const current = Math.max(1, Math.floor(Number(line.quantity)) || 1)
+  line.quantity = String(Math.max(1, current + delta))
+}
+
+function normalizeKitLineQuantity(index: number) {
+  const line = kitLines.value[index]
+  const n = Math.floor(Number(line.quantity))
+  line.quantity = String(Number.isFinite(n) && n >= 1 ? n : 1)
+}
+
 // Шаг 4
 const parentFullName = ref('')
 const parentPhone = ref('')
@@ -196,9 +221,122 @@ watch(childGender, () => {
 
 // Шаг 6
 const termsAccepted = ref(false)
+const orderTotalEstimate = ref<number | null>(null)
+const orderTotalLoading = ref(false)
+const orderTotalError = ref('')
+
+type OrderEstimateLine = {
+  product_name: string
+  quantity: number
+  unit_price: string | null
+  line_total: string
+  image: string | null
+}
+
+const orderEstimateLines = ref<OrderEstimateLine[]>([])
 
 const stepError = ref('')
 const submitError = ref('')
+
+function formatOrderTotalRub(n: number): string {
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+function suggestionImageForProductName(name: string): string | null {
+  const n = name.trim()
+  const s = availableKitSuggestions.value.find((x) => x.name === n)
+  return s?.image ?? null
+}
+
+/** Строки комплекта на шаге 6: позиции из формы + цены и фото из ответа /orderEstimateTotal */
+const confirmKitRows = computed(() => {
+  const kits = buildKitLinesForEstimate()
+  const lines = orderEstimateLines.value
+  return kits.map((k, i) => {
+    const line = lines[i]
+    const lineTotalNum =
+      line?.line_total != null ? parseFloat(String(line.line_total)) : Number.NaN
+    const unitNum =
+      line?.unit_price != null ? parseFloat(String(line.unit_price)) : Number.NaN
+    const fromApi = line?.image?.trim() ? line.image : null
+    return {
+      productName: k.productName,
+      quantity: k.quantity,
+      sizeOverride: k.sizeOverride,
+      lineComment: k.lineComment,
+      image: fromApi ?? suggestionImageForProductName(k.productName),
+      unitPrice: Number.isFinite(unitNum) ? unitNum : null,
+      lineTotal: Number.isFinite(lineTotalNum) ? lineTotalNum : null,
+    }
+  })
+})
+
+function buildKitLinesForEstimate() {
+  return kitLines.value
+    .filter((l) => l.productName.trim())
+    .map((l) => ({
+      productName: l.productName.trim(),
+      quantity: Math.max(1, Math.floor(Number(l.quantity)) || 1),
+      sizeOverride: l.sizeOverride.trim() || null,
+      lineComment: l.lineComment.trim() || null,
+    }))
+}
+
+async function fetchOrderTotalEstimate() {
+  const lines = buildKitLinesForEstimate()
+  if (lines.length === 0) {
+    orderTotalEstimate.value = null
+    orderEstimateLines.value = []
+    orderTotalError.value = ''
+    orderTotalLoading.value = false
+    return
+  }
+  orderTotalLoading.value = true
+  orderTotalError.value = ''
+  try {
+    const res = await axios.post(
+      '/api/orderEstimateTotal',
+      {
+        kitLines: lines,
+        childGender: childGender.value === 'boy' || childGender.value === 'girl' ? childGender.value : undefined,
+      },
+      { headers: getAuthHeaders() },
+    )
+    const raw = res.data?.total_amount
+    const n =
+      typeof raw === 'string' ? parseFloat(raw) : typeof raw === 'number' ? raw : Number.NaN
+    orderTotalEstimate.value = Number.isFinite(n) ? n : null
+    const rawLines = res.data?.lines
+    orderEstimateLines.value = Array.isArray(rawLines)
+      ? rawLines.filter((row: unknown): row is OrderEstimateLine => {
+          if (row === null || typeof row !== 'object') return false
+          const r = row as Record<string, unknown>
+          return typeof r.product_name === 'string'
+        })
+      : []
+  } catch {
+    orderTotalError.value = 'Не удалось рассчитать сумму'
+    orderTotalEstimate.value = null
+    orderEstimateLines.value = []
+  } finally {
+    orderTotalLoading.value = false
+  }
+}
+
+watch(
+  [step, kitLines],
+  () => {
+    if (step.value === 6) {
+      void fetchOrderTotalEstimate()
+    }
+  },
+  { deep: true },
+)
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'application/json' }
@@ -216,7 +354,7 @@ function buildOrderPayload() {
     settlement: settlement.value.trim(),
     school: school.value.trim(),
     classNum: classNum.value.trim(),
-    classLetter: classLetter.value.trim() || null,
+    classLetter: classLetter.value.trim(),
     schoolYear: schoolYear.value.trim(),
     sizeFromTable: sizeFromTable.value.trim(),
     heightCm: heightCm.value.trim() || null,
@@ -267,6 +405,7 @@ function validateStep(n: number): boolean {
       !settlement.value.trim() ||
       !school.value.trim() ||
       !classNum.value.trim() ||
+      !classLetter.value.trim() ||
       !schoolYear.value.trim()
     ) {
       stepError.value = 'Заполните обязательные поля шага 1'
@@ -276,6 +415,15 @@ function validateStep(n: number): boolean {
   if (n === 2) {
     if (!sizeFromTable.value.trim()) {
       stepError.value = 'Укажите размер по таблице'
+      return false
+    }
+    if (
+      !heightCm.value.trim() ||
+      !chestCm.value.trim() ||
+      !waistCm.value.trim() ||
+      !hipsCm.value.trim()
+    ) {
+      stepError.value = 'Укажите рост и обхваты (грудь, талия, бёдра)'
       return false
     }
   }
@@ -289,8 +437,13 @@ function validateStep(n: number): boolean {
     }
   }
   if (n === 4) {
-    if (!parentFullName.value.trim() || !parentPhone.value.trim() || !parentEmail.value.trim()) {
-      stepError.value = 'Заполните ФИО, телефон и email'
+    if (!parentFullName.value.trim() || !parentPhone.value.trim()) {
+      stepError.value = 'Заполните ФИО и телефон'
+      return false
+    }
+    const em = parentEmail.value.trim()
+    if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+      stepError.value = 'Укажите корректный email или оставьте поле пустым'
       return false
     }
   }
@@ -383,11 +536,10 @@ const summaryLines = computed(() => {
           .join(' / ') || '—',
     },
     { label: 'Комментарий по фигуре', value: figureComment.value || '—' },
-    { label: 'Комплект', value: kitLines.value.map((l) => `${l.productName} ×${l.quantity}${l.sizeOverride ? ` (${l.sizeOverride})` : ''}`).join('; ') },
     { label: 'Комментарий к комплекту', value: kitComment.value || '—' },
     { label: 'ФИО родителя', value: parentFullName.value },
     { label: 'Телефон', value: parentPhone.value },
-    { label: 'Email', value: parentEmail.value },
+    { label: 'Email', value: parentEmail.value.trim() || '—' },
     { label: 'Мессенджер MAX', value: messengerMax.value || '—' },
     { label: 'Telegram', value: messengerTelegram.value || '—' },
     { label: 'Получатель', value: recipientIsCustomer.value ? 'Заказчик' : recipientName.value },
@@ -401,8 +553,8 @@ const summaryLines = computed(() => {
   <div class="w-full min-h-screen flex flex-col">
     <Header />
 
-    <main class="flex-1 bg-neutral-50 py-2 md:py-6 px-4">
-      <div class="max-w-3xl mx-auto w-full">
+    <main class="flex-1 bg-neutral-50 py-2 md:py-6 px-4 sm:px-6">
+      <div class="max-w-4xl mx-auto w-full">
         <div v-if="submitted" class="bg-white p-8 rounded-lg shadow-md text-center">
           <Typography as="h1" variant="h2" class="mb-4 text-slate-900">
             Заказ отправлен
@@ -423,57 +575,116 @@ const summaryLines = computed(() => {
             Заполните данные по шагам — это займёт несколько минут.
           </Typography>
 
-          <!-- Step indicator -->
-          <div class="mb-8 overflow-x-auto pb-2">
-            <div class="flex min-w-max gap-2 md:gap-3">
+          <!-- Step indicator: одна строка; при узком экране — горизонтальный свайп без лишней высоты -->
+          <div class="mb-6">
+            <div
+              class="overflow-x-auto overflow-y-hidden py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
               <div
-                v-for="(label, i) in stepLabels"
-                :key="label"
-                class="flex items-center gap-2"
+                class="flex min-w-min flex-nowrap items-center justify-center gap-x-0 px-1 sm:px-2"
               >
-                <button
-                  type="button"
-                  class="flex items-center gap-2 cursor-pointer"
-                  @click="goToStep(i + 1)"
-                >
-                  <div
-                  :class="[
-                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium',
-                    step > i + 1
-                      ? 'bg-emerald-600 text-white'
-                      : step === i + 1
-                        ? 'bg-slate-900 text-white'
-                        : 'bg-neutral-200 text-slate-600',
-                  ]"
-                  >
-                    {{ i + 1 }}
+                <template v-for="(label, i) in stepLabels" :key="label">
+                  <div class="flex shrink-0 items-center">
+                    <button
+                      type="button"
+                      class="group flex w-[5.25rem] flex-col items-center gap-1 sm:w-[6rem] md:w-[6.75rem] lg:w-[7.25rem] cursor-pointer text-center touch-manipulation"
+                      @click="goToStep(i + 1)"
+                    >
+                      <div
+                        :class="[
+                          'relative grid shrink-0 place-items-center rounded-full font-semibold tabular-nums transition-all duration-200',
+                          step === i + 1
+                            ? 'h-9 w-9 -translate-y-0.5 text-[0.9375rem] shadow-md ring-2 ring-slate-900/15 ring-offset-2 ring-offset-white'
+                            : 'h-8 w-8 text-sm',
+                          step > i + 1
+                            ? 'bg-emerald-600 text-white'
+                            : step === i + 1
+                              ? 'bg-slate-900 text-white'
+                              : 'bg-neutral-200 text-slate-600',
+                        ]"
+                      >
+                        <span class="block leading-none select-none [font-feature-settings:'tnum']">
+                          {{ i + 1 }}
+                        </span>
+                      </div>
+                      <span
+                        class="w-full text-[10px] font-medium leading-tight sm:text-[11px] md:text-xs line-clamp-2 transition-colors"
+                        :class="
+                          step === i + 1
+                            ? 'text-slate-900 font-semibold'
+                            : 'text-slate-500'
+                        "
+                      >
+                        {{ label }}
+                      </span>
+                    </button>
+                    <span
+                      v-if="i < stepLabels.length - 1"
+                      class="flex h-8 shrink-0 items-center px-0.5 text-neutral-300 sm:px-1"
+                      aria-hidden="true"
+                    >
+                      <svg
+                        class="h-3.5 w-3.5 sm:h-4 sm:w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </span>
                   </div>
-                  <span
-                    class="hidden sm:inline text-xs font-medium max-w-[100px] leading-tight"
-                    :class="step === i + 1 ? 'text-slate-900' : 'text-slate-500'"
-                  >
-                    {{ label }}
-                  </span>
-                </button>
+                </template>
               </div>
             </div>
           </div>
 
-          <div v-if="stepError" class="mb-4 text-sm text-red-600">
-            {{ stepError }}
+          <div
+            v-if="stepError"
+            class="mb-6 flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+            role="alert"
+          >
+            <svg
+              class="h-5 w-5 shrink-0 text-red-600 mt-0.5"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p class="min-w-0 leading-relaxed">{{ stepError }}</p>
           </div>
 
           <!-- Шаг 1 -->
-          <div v-show="step === 1" class="space-y-4">
-            <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
-              Шаг 1. Данные ребёнка
-            </Typography>
+          <div v-show="step === 1" class="space-y-5">
+            <div class="mb-4">
+              <Typography as="h2" variant="h4" class="text-slate-900">
+                Шаг 1. Данные ребёнка
+              </Typography>
+              <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                {{ stepSubtitles[0] }}
+              </p>
+            </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">ФИО ребёнка</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                ФИО ребёнка <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input v-model="childFullName" type="text" :class="inputClass" placeholder="Фамилия Имя Отчество" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Пол</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Пол <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <select v-model="childGender" :class="inputClass">
                 <option value="" disabled>Выберите</option>
                 <option value="boy">Мальчик</option>
@@ -481,56 +692,99 @@ const summaryLines = computed(() => {
               </select>
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Населённый пункт</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Населённый пункт <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input v-model="settlement" type="text" :class="inputClass" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Школа</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Школа <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input v-model="school" type="text" :class="inputClass" />
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Класс</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Класс <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="classNum" type="text" :class="inputClass" placeholder="например, 5" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Литера</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Литера <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="classLetter" type="text" :class="inputClass" placeholder="А, Б…" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Учебный год</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Учебный год <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="schoolYear" type="text" :class="inputClass" placeholder="2025/2026" />
               </div>
             </div>
+            <p class="text-xs text-slate-500 pt-1">
+              <span class="text-red-600" aria-hidden="true">*</span>
+              обязательные поля для заполнения
+            </p>
           </div>
 
           <!-- Шаг 2 -->
-          <div v-show="step === 2" class="space-y-4">
-            <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
-              Шаг 2. Размер
-            </Typography>
+          <div v-show="step === 2" class="space-y-5">
+            <div class="mb-4">
+              <Typography as="h2" variant="h4" class="text-slate-900">
+                Шаг 2. Размер
+              </Typography>
+              <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                {{ stepSubtitles[1] }}
+              </p>
+            </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Размер по таблице</label>
-              <input v-model="sizeFromTable" type="text" :class="inputClass" />
+              <label for="order-size-from-table" class="block text-sm font-medium text-slate-700 mb-1">
+                Размер по таблице <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
+              <a
+                href="/sizes"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="mb-2 inline-block text-sm font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2"
+              >
+                Смотреть таблицу размеров
+              </a>
+              <input
+                id="order-size-from-table"
+                v-model="sizeFromTable"
+                type="text"
+                :class="inputClass"
+                placeholder="Например 42"
+              />
             </div>
             <Typography as="p" variant="small" class="text-slate-500">
-              При необходимости укажите мерки (см):
+              Мерки (см):
             </Typography>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Рост</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Рост <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="heightCm" type="text" :class="inputClass" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Грудь</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Грудь <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="chestCm" type="text" :class="inputClass" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Талия</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Талия <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="waistCm" type="text" :class="inputClass" />
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Бёдра</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Бёдра <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input v-model="hipsCm" type="text" :class="inputClass" />
               </div>
             </div>
@@ -543,14 +797,24 @@ const summaryLines = computed(() => {
                 placeholder="Особенности посадки, пожелания"
               />
             </div>
+            <p class="text-xs text-slate-500 pt-1">
+              <span class="text-red-600" aria-hidden="true">*</span>
+              обязательные поля для заполнения
+            </p>
           </div>
 
           <!-- Шаг 3 -->
-          <div v-show="step === 3" class="space-y-4">
-            <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
-              Шаг 3. Комплект
-            </Typography>
-            <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+          <div v-show="step === 3" class="space-y-5">
+            <div class="mb-4">
+              <Typography as="h2" variant="h4" class="text-slate-900">
+                Шаг 3. Комплект
+              </Typography>
+              <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                {{ stepSubtitles[2] }}
+              </p>
+            </div>
+            <div :class="stepCardClass">
+            <div class="rounded-lg border border-neutral-200 bg-white p-4">
               <p class="text-sm font-medium text-slate-800">
                 Доступные комплекты
                 {{ childGender === 'boy' ? 'для мальчиков' : childGender === 'girl' ? 'для девочек' : '' }}
@@ -559,10 +823,6 @@ const summaryLines = computed(() => {
                 Выберите пол ребёнка на шаге 1, чтобы увидеть рекомендации.
               </p>
               <template v-else>
-                <p class="mt-1 text-xs text-slate-500">
-                  Сейчас выбрано для заполнения: Позиция {{ selectedKitLineIndex + 1 }}.
-                  Клик по фото открывает карточку товара в новой вкладке.
-                </p>
                 <p v-if="kitSuggestionsLoading" class="mt-1 text-xs text-slate-500">
                   Загружаем доступные комплекты...
                 </p>
@@ -622,20 +882,23 @@ const summaryLines = computed(() => {
                         class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
                         @click="applySuggestedKitToSelectedLine(kit.name)"
                       >
-                        В текущую позицию
+                        Добавить +
                       </button>
                       <button
                         type="button"
                         class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
                         @click="addSuggestedKitAsNewLine(kit.name)"
                       >
-                        В новую позицию
+                        В новую позицию +
                       </button>
                     </div>
                   </div>
                 </div>
               </template>
             </div>
+            <datalist v-if="availableKitSuggestions.length" id="kit-name-suggestions">
+              <option v-for="kit in availableKitSuggestions" :key="kit.name" :value="kit.name" />
+            </datalist>
             <div
               v-for="(line, idx) in kitLines"
               :key="idx"
@@ -653,7 +916,9 @@ const summaryLines = computed(() => {
                 </button>
               </div>
               <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Наименование изделия</label>
+                <label class="block text-sm font-medium text-slate-700 mb-1">
+                  Наименование изделия <span class="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input
                   v-model="line.productName"
                   type="text"
@@ -662,24 +927,50 @@ const summaryLines = computed(() => {
                   @focus="selectedKitLineIndex = idx"
                 />
               </div>
-              <datalist v-if="availableKitSuggestions.length" id="kit-name-suggestions">
-                <option v-for="kit in availableKitSuggestions" :key="kit.name" :value="kit.name" />
-              </datalist>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">Количество</label>
-                  <input v-model="line.quantity" type="number" min="1" :class="inputClass" />
+                  <label class="block text-sm font-medium text-slate-700 mb-1">
+                    Количество <span class="text-red-600" aria-hidden="true">*</span>
+                  </label>
+                  <div
+                    class="flex h-8 w-full max-w-[9rem] items-stretch overflow-hidden rounded border border-neutral-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-slate-400"
+                  >
+                    <button
+                      type="button"
+                      class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-neutral-50 text-lg font-bold leading-none text-slate-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-slate-400 disabled:hover:bg-neutral-50"
+                      :disabled="Math.max(1, Math.floor(Number(line.quantity)) || 1) <= 1"
+                      aria-label="Уменьшить количество"
+                      @click="adjustKitLineQuantity(idx, -1)"
+                    >
+                      −
+                    </button>
+                    <input
+                      v-model="line.quantity"
+                      type="number"
+                      min="1"
+                      class="min-w-0 flex-1 basis-0 border-0 bg-white px-0.5 py-0 text-center text-base font-bold tabular-nums leading-none text-slate-900 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      @blur="normalizeKitLineQuantity(idx)"
+                    />
+                    <button
+                      type="button"
+                      class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-neutral-50 text-lg font-bold leading-none text-slate-700 transition hover:bg-neutral-100"
+                      aria-label="Увеличить количество"
+                      @click="adjustKitLineQuantity(idx, 1)"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <div class="sm:col-span-2">
                   <label class="block text-sm font-medium text-slate-700 mb-1">
                     Размер по позиции, если отличается от общего
                   </label>
-                  <input v-model="line.sizeOverride" type="text" :class="inputClass" placeholder="Необязательно" />
+                  <input v-model="line.sizeOverride" type="text" :class="inputClass" />
                 </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">Комментарий</label>
-                <input v-model="line.lineComment" type="text" :class="inputClass" placeholder="Необязательно" />
+                <input v-model="line.lineComment" type="text" :class="inputClass" />
               </div>
             </div>
             <Button type="button" variant="outline" size="sm" @click="addKitLine">
@@ -689,23 +980,37 @@ const summaryLines = computed(() => {
               <label class="block text-sm font-medium text-slate-700 mb-1">Комментарий к комплекту</label>
               <textarea v-model="kitComment" rows="3" :class="inputClass" />
             </div>
+            <p class="text-xs text-slate-500 pt-1">
+              <span class="text-red-600" aria-hidden="true">*</span>
+              обязательные поля для заполнения
+            </p>
+            </div>
           </div>
 
           <!-- Шаг 4 -->
-          <div v-show="step === 4" class="space-y-4">
-            <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
-              Шаг 4. Данные родителя
-            </Typography>
+          <div v-show="step === 4" class="space-y-5">
+            <div class="mb-4">
+              <Typography as="h2" variant="h4" class="text-slate-900">
+                Шаг 4. Данные родителя
+              </Typography>
+              <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                {{ stepSubtitles[3] }}
+              </p>
+            </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">ФИО родителя</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                ФИО родителя <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input v-model="parentFullName" type="text" :class="inputClass" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Телефон <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input v-model="parentPhone" type="tel" :class="inputClass" placeholder="+7 …" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Email (для отправки чека)</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
               <input v-model="parentEmail" type="email" :class="inputClass" />
             </div>
             <div>
@@ -716,15 +1021,26 @@ const summaryLines = computed(() => {
               <label class="block text-sm font-medium text-slate-700 mb-1">Telegram</label>
               <input v-model="messengerTelegram" type="text" :class="inputClass" placeholder="@username" />
             </div>
+            <p class="text-xs text-slate-500 pt-1">
+              <span class="text-red-600" aria-hidden="true">*</span>
+              обязательные поля для заполнения
+            </p>
           </div>
 
           <!-- Шаг 5 -->
-          <div v-show="step === 5" class="space-y-4">
-            <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
-              Шаг 5. Получение
-            </Typography>
+          <div v-show="step === 5" class="space-y-5">
+            <div class="mb-4">
+              <Typography as="h2" variant="h4" class="text-slate-900">
+                Шаг 5. Получение
+              </Typography>
+              <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                {{ stepSubtitles[4] }}
+              </p>
+            </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-2">Кто будет получать заказ</label>
+              <label class="block text-sm font-medium text-slate-700 mb-2">
+                Кто будет получать заказ <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <div class="space-y-2">
                 <label class="flex items-center gap-2 cursor-pointer">
                   <input v-model="recipientIsCustomer" type="radio" :value="true" class="w-4 h-4" />
@@ -737,11 +1053,15 @@ const summaryLines = computed(() => {
               </div>
             </div>
             <div v-if="!recipientIsCustomer">
-              <label class="block text-sm font-medium text-slate-700 mb-1">ФИО получателя</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                ФИО получателя <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input v-model="recipientName" type="text" :class="inputClass" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Телефон получателя</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Телефон получателя <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <input
                 v-model="recipientPhone"
                 type="tel"
@@ -750,21 +1070,131 @@ const summaryLines = computed(() => {
                 :placeholder="recipientIsCustomer ? 'Совпадает с телефоном заказчика' : '+7 …'"
               />
             </div>
+            <p class="text-xs text-slate-500 pt-1">
+              <span class="text-red-600" aria-hidden="true">*</span>
+              обязательные поля для заполнения
+            </p>
           </div>
 
           <!-- Шаг 6 -->
-          <div v-show="step === 6" class="space-y-4">
-            <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
-              Шаг 6. Подтверждение
-            </Typography>
-            <Typography as="p" variant="body" class="text-slate-600 mb-4">
-              Проверьте данные перед отправкой.
-            </Typography>
-            <dl class="rounded-lg border border-neutral-200 divide-y divide-neutral-200">
+          <div v-show="step === 6" class="space-y-5">
+            <div class="mb-4">
+              <Typography as="h2" variant="h4" class="text-slate-900">
+                Шаг 6. Подтверждение
+              </Typography>
+              <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
+                {{ stepSubtitles[5] }}
+              </p>
+            </div>
+            <div :class="stepCardClass">
+            <div
+              class="rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3"
+            >
+              <Typography v-if="orderTotalLoading" as="p" variant="body" class="text-slate-700">
+                Подсчёт суммы…
+              </Typography>
+              <Typography
+                v-else-if="orderTotalError"
+                as="p"
+                variant="body"
+                class="text-amber-800"
+              >
+                {{ orderTotalError }}
+              </Typography>
+              <Typography v-else as="p" variant="body" class="text-slate-900 font-medium">
+                Сумма заказа:
+                {{
+                  orderTotalEstimate != null
+                    ? formatOrderTotalRub(orderTotalEstimate)
+                    : '—'
+                }}
+              </Typography>
+            </div>
+
+            <div class="mb-4">
+              <Typography as="h3" variant="body" class="text-sm font-medium text-slate-500 mb-3">
+                Комплект
+              </Typography>
+              <div class="space-y-3">
+                <div
+                  v-for="(row, idx) in confirmKitRows"
+                  :key="`${row.productName}-${idx}`"
+                  class="flex gap-4 rounded-xl border border-neutral-200 bg-white p-3 shadow-sm"
+                >
+                  <div
+                    class="shrink-0 w-24 h-24 sm:w-28 sm:h-28 rounded-lg bg-neutral-100 overflow-hidden border border-neutral-100"
+                  >
+                    <img
+                      v-if="row.image"
+                      :src="row.image"
+                      :alt="row.productName"
+                      class="w-full h-full object-cover"
+                    />
+                    <div
+                      v-else
+                      class="w-full h-full flex items-center justify-center text-xs text-neutral-400 text-center px-1"
+                    >
+                      Нет фото
+                    </div>
+                  </div>
+                  <div class="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div class="min-w-0 space-y-1">
+                      <p class="text-sm font-semibold text-slate-900 leading-snug">
+                        {{ row.productName }}
+                      </p>
+                      <p class="text-sm text-slate-600">
+                        Количество: {{ row.quantity }}
+                        <span
+                          v-if="row.unitPrice != null"
+                          class="text-slate-500"
+                        >
+                          · {{ formatOrderTotalRub(row.unitPrice) }} за шт.
+                        </span>
+                      </p>
+                      <p v-if="row.sizeOverride" class="text-xs text-slate-600">
+                        Размер: {{ row.sizeOverride }}
+                      </p>
+                      <p v-if="row.lineComment" class="text-xs text-slate-600">
+                        {{ row.lineComment }}
+                      </p>
+                    </div>
+                    <div class="shrink-0 text-left sm:text-right">
+                      <p
+                        v-if="orderTotalLoading"
+                        class="text-sm text-slate-500"
+                      >
+                        …
+                      </p>
+                      <p
+                        v-else
+                        class="text-base font-semibold text-slate-900 tabular-nums"
+                      >
+                        {{
+                          row.lineTotal != null
+                            ? formatOrderTotalRub(row.lineTotal)
+                            : '—'
+                        }}
+                      </p>
+                      <p
+                        v-if="!orderTotalLoading && row.lineTotal === 0 && row.unitPrice == null"
+                        class="text-xs text-amber-800 mt-1 max-w-[12rem] sm:max-w-none sm:ml-auto"
+                      >
+                        Не найдено в каталоге — сумма по строке 0 ₽
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <dl class="rounded-lg border border-neutral-200 overflow-hidden divide-y divide-neutral-200">
               <div
-                v-for="row in summaryLines"
+                v-for="(row, idx) in summaryLines"
                 :key="row.label"
-                class="grid grid-cols-1 sm:grid-cols-3 gap-1 px-4 py-3 sm:gap-4"
+                :class="[
+                  'grid grid-cols-1 sm:grid-cols-3 gap-1 px-4 py-3 sm:gap-4',
+                  idx % 2 === 1 ? 'bg-neutral-100/70' : 'bg-white',
+                ]"
               >
                 <dt class="text-sm font-medium text-slate-500 sm:col-span-1">{{ row.label }}</dt>
                 <dd class="text-sm text-slate-900 sm:col-span-2 whitespace-pre-wrap">{{ row.value }}</dd>
@@ -776,44 +1206,69 @@ const summaryLines = computed(() => {
                 Согласен(на) со сроками изготовления и условиями предзаказа
               </span>
             </label>
-            <div v-if="submitError" class="text-sm text-red-600">
-              {{ submitError }}
+            <div
+              v-if="submitError"
+              class="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+              role="alert"
+            >
+              <svg
+                class="h-5 w-5 shrink-0 text-red-600 mt-0.5"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p class="min-w-0 leading-relaxed">{{ submitError }}</p>
+            </div>
             </div>
           </div>
 
-          <!-- Nav -->
-          <div class="mt-10 flex flex-col-reverse sm:flex-row gap-3 sm:justify-between">
-            <Button
-              v-if="step > 1"
-              type="button"
-              variant="outline"
-              @click="prevStep"
-            >
-              Назад
-            </Button>
-            <div v-else class="hidden sm:block" />
-
-            <div class="flex gap-3 sm:ml-auto">
-              <Button
-                v-if="step < totalSteps"
-                type="button"
-                variant="primary"
-                class="w-full sm:w-auto"
-                @click="nextStep"
-              >
-                Далее
-              </Button>
-              <Button
-                v-else
-                type="button"
-                variant="primary"
-                class="w-full sm:w-auto"
-                :disabled="submitLoading"
-                @click="submitOrder"
-              >
-                {{ submitLoading ? 'Отправка…' : 'Отправить заказ' }}
-              </Button>
+          <!-- Nav: на мобиле сначала «Далее», ниже отделённо «Назад» -->
+          <div class="mt-10 border-t border-neutral-200 pt-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div class="order-2 flex w-full min-h-[2.75rem] items-stretch sm:order-1 sm:flex-1 sm:justify-start">
+                <Button
+                  v-if="step > 1"
+                  type="button"
+                  variant="outline"
+                  class="w-full sm:w-auto border-neutral-300 bg-neutral-50 text-slate-800 hover:bg-neutral-100"
+                  @click="prevStep"
+                >
+                  Назад
+                </Button>
+              </div>
+              <div class="order-1 flex w-full justify-stretch sm:order-2 sm:w-auto sm:justify-end">
+                <Button
+                  v-if="step < totalSteps"
+                  type="button"
+                  variant="primary"
+                  class="w-full sm:w-auto min-w-[10rem]"
+                  @click="nextStep"
+                >
+                  Далее
+                </Button>
+                <Button
+                  v-else
+                  type="button"
+                  variant="primary"
+                  class="w-full sm:w-auto min-w-[10rem]"
+                  :disabled="submitLoading"
+                  @click="submitOrder"
+                >
+                  {{ submitLoading ? 'Отправка…' : 'Отправить заказ' }}
+                </Button>
+              </div>
             </div>
+            <p class="mt-1.5 text-center text-xs text-slate-500 sm:hidden">
+              «Назад» — вернуться и изменить данные
+            </p>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\EstimateOrderTotalRequest;
 use App\Http\Requests\StoreOrderRequest;
 use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
@@ -21,6 +22,19 @@ class OrderController extends Controller
             'message' => 'Заказ принят',
             'order' => $order,
         ], 201);
+    }
+
+    public function estimateOrderTotal(EstimateOrderTotalRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+        $items = $validated['items'];
+        $productGender = $this->orderService->productGenderFromChildGender($validated['child_gender'] ?? null);
+        $result = $this->orderService->calculateOrderTotalsAndLines($items, $productGender);
+
+        return response()->json([
+            'total_amount' => $result['total'],
+            'lines' => $result['lines'],
+        ]);
     }
 
     public function getOrders(\Illuminate\Http\Request $request): JsonResponse

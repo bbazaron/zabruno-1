@@ -77,7 +77,7 @@ watch(
 
 const navItems = [
   { label: 'ШКОЛЬНАЯ ФОРМА', to: '/catalog' },
-  { label: 'КАК ЗАКАЗАТЬ', href: '#how-to-order' },
+  { label: 'КАК ЗАКАЗАТЬ', to: '/how-to-order' },
   { label: 'О РАЗМЕРЕ', to: '/sizes' },
   { label: 'О НАС', to: '/about' },
   { label: 'КОНТАКТЫ', to: '/contacts' },

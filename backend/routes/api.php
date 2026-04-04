@@ -34,4 +34,5 @@ Route::get('/index', [ProductController::class, 'index']);
 Route::get('/product/{id}', [ProductController::class, 'getProductPage']);
 
 Route::post('/createOrder', [OrderController::class, 'createOrder']);
+Route::post('/orderEstimateTotal', [OrderController::class, 'estimateOrderTotal']);
 

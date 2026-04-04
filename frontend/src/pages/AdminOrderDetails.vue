@@ -21,6 +21,7 @@ interface AdminOrderDetails {
   id: number
   status: string
   created_at: string
+  total_amount?: string | number | null
   child_full_name: string
   child_gender: string
   settlement: string
@@ -84,6 +85,18 @@ function formatDate(date: string): string {
   const parsed = new Date(date)
   if (Number.isNaN(parsed.getTime())) return date
   return parsed.toLocaleDateString('ru-RU')
+}
+
+function formatOrderTotal(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') return '—'
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw))
+  if (!Number.isFinite(n)) return '—'
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n)
 }
 
 async function loadOrder() {
@@ -175,7 +188,7 @@ onMounted(() => {
           <div>
             <Typography as="h1" class="text-3xl font-light">Заказ #{{ order.id }}</Typography>
             <Typography as="p" class="text-slate-600 mt-1">
-              Дата: {{ formatDate(order.created_at) }}
+              Дата: {{ formatDate(order.created_at) }} · Сумма: {{ formatOrderTotal(order.total_amount) }}
             </Typography>
             <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:flex-wrap">
               <div>

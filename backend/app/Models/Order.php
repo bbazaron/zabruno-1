@@ -34,6 +34,7 @@ class Order extends Model
         'recipient_name',
         'recipient_phone',
         'terms_accepted',
+        'total_amount',
     ];
 
     protected function casts(): array
@@ -41,6 +42,7 @@ class Order extends Model
         return [
             'recipient_is_customer' => 'boolean',
             'terms_accepted' => 'boolean',
+            'total_amount' => 'decimal:2',
         ];
     }
 

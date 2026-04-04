@@ -12,6 +12,7 @@ interface AdminOrder {
   id: number
   created_at: string
   status: string
+  total_amount?: string | number | null
   parent_full_name?: string
   parent_phone?: string
   parent_email?: string
@@ -47,6 +48,18 @@ function formatDate(date: string): string {
   const parsed = new Date(date)
   if (Number.isNaN(parsed.getTime())) return date
   return parsed.toLocaleDateString('ru-RU')
+}
+
+function formatOrderTotal(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === '') return '—'
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw))
+  if (!Number.isFinite(n)) return '—'
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n)
 }
 
 /** Дата заказа в локальном календаре YYYY-MM-DD для сравнения с input type="date" */
@@ -247,6 +260,7 @@ onMounted(() => {
               <th class="py-2 px-3">Телефон</th>
               <th class="py-2 px-3">Email</th>
               <th class="py-2 px-3">Город</th>
+              <th class="py-2 px-3">Сумма</th>
               <th class="py-2 px-3">Школа</th>
             </tr>
           </thead>
@@ -264,6 +278,7 @@ onMounted(() => {
               <td class="py-2 px-3">{{ order.parent_phone || '-' }}</td>
               <td class="py-2 px-3">{{ order.parent_email || order.user?.email || '-' }}</td>
               <td class="py-2 px-3">{{ order.settlement || '-' }}</td>
+              <td class="py-2 px-3 whitespace-nowrap">{{ formatOrderTotal(order.total_amount) }}</td>
               <td class="py-2 px-3 flex items-center justify-between gap-2">
                 <span>{{ order.school || '-' }}</span>
                 <Button size="sm" variant="primary" @click.stop="openOrder(order.id)">Открыть</Button>

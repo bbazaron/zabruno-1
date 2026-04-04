@@ -67,6 +67,11 @@ class StoreOrderRequest extends FormRequest
             }
             $this->merge(['items' => $normalized]);
         }
+
+        $rawEmail = $this->input('parent_email');
+        if ($rawEmail === null || (is_string($rawEmail) && trim($rawEmail) === '')) {
+            $this->merge(['parent_email' => '']);
+        }
     }
 
     public function rules(): array
@@ -77,7 +82,7 @@ class StoreOrderRequest extends FormRequest
             'settlement' => 'required|string|max:255',
             'school' => 'required|string|max:255',
             'class_num' => 'required|string|max:32',
-            'class_letter' => 'nullable|string|max:32',
+            'class_letter' => 'required|string|max:32',
             'school_year' => 'required|string|max:32',
 
             'size_from_table' => 'required|string|max:255',
@@ -97,7 +102,18 @@ class StoreOrderRequest extends FormRequest
 
             'parent_full_name' => 'required|string|max:255',
             'parent_phone' => 'required|string|max:32',
-            'parent_email' => 'required|email|max:255',
+            'parent_email' => ['nullable', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (! is_string($value)) {
+                    return;
+                }
+                $t = trim($value);
+                if ($t === '') {
+                    return;
+                }
+                if (! filter_var($t, FILTER_VALIDATE_EMAIL)) {
+                    $fail('Укажите корректный email или оставьте поле пустым.');
+                }
+            }],
             'messenger_max' => 'nullable|string|max:255',
             'messenger_telegram' => 'nullable|string|max:255',
 

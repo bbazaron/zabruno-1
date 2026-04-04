@@ -12,14 +12,48 @@ import Typography from '../components/ui/Typography.vue'
       <!-- Заголовок -->
       <section class="bg-white border-b border-neutral-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div class="mb-4 text-sm text-slate-600">
+          <div class="text-sm text-slate-600">
             <a href="/" class="hover:text-slate-900">Главная</a>
             <span class="mx-2">/</span>
             <span class="text-slate-900 font-medium">О размере</span>
           </div>
-          <Typography as="h1" variant="h2" class="text-slate-900 mb-2 max-w-4xl">
-            Как правильно снять мерки за 1 минуту.
+        </div>
+      </section>
+
+      <!-- Таблица размеров -->
+      <section class="bg-white border-b border-neutral-200 py-8 lg:py-12">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <Typography as="h2" variant="h3" class="text-slate-900">
+            Таблица размеров
           </Typography>
+
+          <div class="space-y-4 text-slate-700">
+            <Typography as="p" variant="body">
+              Наша таблица размеров поможет вам подобрать идеальную посадку по вашим меркам.
+            </Typography>
+            <ul class="list-disc pl-5 space-y-2 text-base md:text-lg leading-relaxed">
+              <li>Сравните свои параметры с данными в таблице.</li>
+              <li>Если ваши значения находятся между размерами — рекомендуем выбрать больший.</li>
+              <li>При сомнениях ориентируйтесь на обхват груди как основной параметр.</li>
+            </ul>
+            <Typography as="p" variant="body" class="text-slate-700">
+              <span aria-hidden="true"></span>
+              Если вы не уверены в выборе —
+              <a href="/contacts" class="text-slate-900 font-medium underline underline-offset-2 hover:text-slate-700">
+                напишите нам
+              </a>
+              , и мы поможем подобрать размер.
+            </Typography>
+          </div>
+
+          <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 overflow-x-auto">
+            <img
+              src="/images/AboutSize/SizeTable.png"
+              alt="Таблица размеров"
+              class="w-full min-w-[280px] h-auto object-contain mx-auto"
+              loading="lazy"
+            />
+          </div>
         </div>
       </section>
 
@@ -84,43 +118,6 @@ import Typography from '../components/ui/Typography.vue'
                 />
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Таблица размеров -->
-      <section class="bg-white border-t border-neutral-200 py-8 lg:py-12">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <Typography as="h2" variant="h3" class="text-slate-900">
-            Таблица размеров
-          </Typography>
-
-          <div class="space-y-4 text-slate-700">
-            <Typography as="p" variant="body">
-              Наша таблица размеров поможет вам подобрать идеальную посадку по вашим меркам.
-            </Typography>
-            <ul class="list-disc pl-5 space-y-2 text-base md:text-lg leading-relaxed">
-              <li>Сравните свои параметры с данными в таблице.</li>
-              <li>Если ваши значения находятся между размерами — рекомендуем выбрать больший.</li>
-              <li>При сомнениях ориентируйтесь на обхват груди как основной параметр.</li>
-            </ul>
-            <Typography as="p" variant="body" class="text-slate-700">
-              <span aria-hidden="true">💡</span>
-              Если вы не уверены в выборе —
-              <a href="/contacts" class="text-slate-900 font-medium underline underline-offset-2 hover:text-slate-700">
-                напишите нам
-              </a>
-              , и мы поможем подобрать размер.
-            </Typography>
-          </div>
-
-          <div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 overflow-x-auto">
-            <img
-              src="/images/AboutSize/SizeTable.png"
-              alt="Таблица размеров"
-              class="w-full min-w-[280px] h-auto object-contain mx-auto"
-              loading="lazy"
-            />
           </div>
         </div>
       </section>

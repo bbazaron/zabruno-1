@@ -15,6 +15,7 @@ import AdminOrderDetails from '../pages/AdminOrderDetails.vue'
 import Contacts from '../pages/Contacts.vue'
 import AboutUs from '../pages/AboutUs.vue'
 import AboutSize from '../pages/AboutSize.vue'
+import HowToOrder from '../pages/HowToOrder.vue'
 import axios from 'axios'
 
 const routes = [
@@ -42,6 +43,11 @@ const routes = [
     path: '/sizes',
     name: 'SizeGuide',
     component: AboutSize,
+  },
+  {
+    path: '/how-to-order',
+    name: 'HowToOrder',
+    component: HowToOrder,
   },
     {
         path: '/genderSelect',
