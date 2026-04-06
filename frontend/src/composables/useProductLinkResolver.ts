@@ -1,10 +1,12 @@
 import { shallowRef } from 'vue'
 import axios from 'axios'
+import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 
 export interface ProductRow {
   id: number
   name: string
   gender: string
+  image?: string | null
 }
 
 const products = shallowRef<ProductRow[]>([])
@@ -47,5 +49,15 @@ export function useProductLinkResolver() {
     return candidates[0].id
   }
 
-  return { products, loadProducts, resolveProductId }
+  function resolveProductImage(productName: string, orderGender?: string | null): string | null {
+    void products.value.length
+    const id = resolveProductId(productName, orderGender)
+    if (id == null) return null
+    const p = products.value.find((row) => row.id === id)
+    const img = p?.image
+    if (typeof img !== 'string' || !img.trim()) return null
+    return resolveBackendMediaUrl(img.trim())
+  }
+
+  return { products, loadProducts, resolveProductId, resolveProductImage }
 }

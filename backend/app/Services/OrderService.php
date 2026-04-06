@@ -2,17 +2,29 @@
 
 namespace App\Services;
 
+use App\Mail\OrderReceived;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class OrderService
 {
-    public function createOrder(Request $request, array $validated): Order
+    public function __construct(
+        private YooKassaClient $yooKassa,
+    ) {}
+
+    /**
+     * Создаёт заказ и платёж в ЮKassa в одной транзакции БД. При сбое API заказ откатывается.
+     *
+     * @return array{order: Order, confirmation_url: string|null}
+     */
+    public function createOrder(Request $request, array $validated): array
     {
         $items = $validated['items'];
         unset($validated['items']);
@@ -22,7 +34,9 @@ class OrderService
         $productGender = $this->productGenderFromChildGender($validated['child_gender'] ?? null);
         $validated['total_amount'] = $this->calculateTotalAmount($items, $productGender);
 
-        return DB::transaction(function () use ($validated, $items) {
+        $returnUrl = $this->yookassaReturnUrl();
+
+        return DB::transaction(function () use ($validated, $items, $returnUrl) {
             /** @var Order $order */
             $order = Order::create($validated);
 
@@ -36,14 +50,90 @@ class OrderService
                 ]);
             }
 
-            return $order->load('items');
+            $order->load('items');
+
+            $amount = (float) $order->total_amount;
+            $confirmationUrl = null;
+
+            if ($amount > 0) {
+                if (! $this->yooKassa->isConfigured()) {
+                    throw new \RuntimeException('ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
+                }
+
+                $amountFormatted = number_format($amount, 2, '.', '');
+                $payment = $this->yooKassa->createRedirectPayment(
+                    $amountFormatted,
+                    'Заказ №'.$order->id,
+                    $returnUrl,
+                    ['order_id' => (string) $order->id],
+                );
+
+                $order->update([
+                    'yookassa_payment_id' => $payment['id'],
+                    'yookassa_payment_status' => $payment['status'],
+                ]);
+
+                $order = $order->fresh('items');
+                $confirmationUrl = $payment['confirmation_url'];
+            }
+
+            $this->scheduleOrderReceivedEmail($order);
+
+            return [
+                'order' => $order,
+                'confirmation_url' => $confirmationUrl,
+            ];
         });
+    }
+
+    private function scheduleOrderReceivedEmail(Order $order): void
+    {
+        $email = trim((string) $order->parent_email);
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $orderId = $order->id;
+
+        DB::afterCommit(function () use ($email, $orderId): void {
+            $fresh = Order::query()->with('items')->find($orderId);
+            if ($fresh === null) {
+                return;
+            }
+
+            try {
+                Mail::to($email)->queue(new OrderReceived($fresh));
+            } catch (\Throwable $e) {
+                try {
+                    Log::error('Не удалось отправить письмо о принятом заказе', [
+                        'order_id' => $orderId,
+                        'message' => $e->getMessage(),
+                    ]);
+                } catch (\Throwable $logWriteFailed) {
+                    error_log(sprintf(
+                        'OrderReceived mail failed (order_id=%s): %s | log failed: %s',
+                        (string) $orderId,
+                        $e->getMessage(),
+                        $logWriteFailed->getMessage()
+                    ));
+                }
+            }
+        });
+    }
+
+    private function yookassaReturnUrl(): string
+    {
+        $base = config('services.yookassa.frontend_url');
+        if ($base === null || $base === '') {
+            $base = rtrim((string) config('app.url'), '/');
+        }
+
+        return $base.'/orderCheckout?fromPayment=1';
     }
 
     /**
      * Сумма заказа и строки: для каждой позиции цена из products по точному совпадению названия × количество.
-     * При заданном $productGender (boys/girls) выбирается товар с тем же полом — иначе при одинаковых названиях
-     * у разных полов подставлялся бы первый попавшийся в БД (неверное фото и цена).
+     * При заданном $productGender (boys/girls) выбирается товар с тем же полом
      * Позиции без совпадения в каталоге дают line_total 0.
      *
      * @param  array<int, array{product_name?: string, quantity?: int}>  $items
@@ -187,5 +277,40 @@ class OrderService
         $order->update(['status' => $status]);
 
         return $order->fresh(['items', 'user']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    public function updateAdminOrder(int $orderId, array $validated): ?Order
+    {
+        /** @var array<int, array{product_name: string, quantity: int, size_override?: string|null, line_comment?: string|null}> $items */
+        $items = $validated['items'];
+        unset($validated['items']);
+
+        $productGender = $this->productGenderFromChildGender($validated['child_gender'] ?? null);
+        $validated['total_amount'] = $this->calculateTotalAmount($items, $productGender);
+
+        return DB::transaction(function () use ($orderId, $validated, $items) {
+            $order = Order::query()->find($orderId);
+            if ($order === null) {
+                return null;
+            }
+
+            $order->update($validated);
+            $order->items()->delete();
+
+            foreach ($items as $index => $row) {
+                $order->items()->create([
+                    'position' => $index,
+                    'product_name' => $row['product_name'],
+                    'quantity' => (int) $row['quantity'],
+                    'size_override' => $row['size_override'] ?? null,
+                    'line_comment' => $row['line_comment'] ?? null,
+                ]);
+            }
+
+            return $order->fresh(['items', 'user']);
+        });
     }
 }

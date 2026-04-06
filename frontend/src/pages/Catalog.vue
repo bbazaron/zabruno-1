@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watchEffect } from 'vue'
+import { ref, computed, watch, watchEffect } from 'vue'
 import axios from 'axios'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
@@ -7,18 +7,46 @@ import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart, Filter } from 'lucide-vue-next'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+
+type GenderFilter = 'all' | 'boys' | 'girls'
+
+interface CatalogProduct {
+  id: number
+  name: string
+  description: string
+  image: string
+  gender: string
+  category: string
+  price: number
+  originalPrice?: number
+  sizes: string[]
+  inStock?: boolean
+}
+
+function parseGenderQuery(q: unknown): GenderFilter {
+  const s = String(q ?? '')
+    .toLowerCase()
+    .trim()
+  if (s === 'boys' || s === 'boy') return 'boys'
+  if (s === 'girls' || s === 'girl') return 'girls'
+  return 'all'
+}
+
+const route = useRoute()
+const router = useRouter()
+
 const selectedCategory = ref('all')
 const sortBy = ref('popular')
-const route = useRoute()
-const selectedGender = ref((route.query.gender as 'boys' | 'girls' | 'all') || 'all')
+const selectedGender = ref<GenderFilter>(parseGenderQuery(route.query.gender))
 
-const products = ref([])
+const products = ref<CatalogProduct[]>([])
 
 
 async function fetchProducts() {
   try {
-    const response = await axios.get('http://localhost/api/index', {
+    const response = await axios.get('/api/index', {
       params: {
         gender: selectedGender.value,
         category: selectedCategory.value,
@@ -36,7 +64,22 @@ watchEffect(() => {
   fetchProducts()
 })
 
-const genders = [
+watch(
+  () => route.query.gender,
+  (q) => {
+    const next = parseGenderQuery(q)
+    if (next !== selectedGender.value) selectedGender.value = next
+  },
+)
+
+watch(selectedGender, (g) => {
+  const nextQuery = { ...route.query }
+  if (g === 'all') delete nextQuery.gender
+  else nextQuery.gender = g
+  void router.replace({ path: route.path, query: nextQuery })
+})
+
+const genders: { id: GenderFilter; name: string }[] = [
   { id: 'all', name: 'Все' },
   { id: 'boys', name: 'Для мальчиков' },
   { id: 'girls', name: 'Для девочек' },
@@ -55,10 +98,10 @@ const filteredProducts = computed(() => {
   let filtered = products.value
 
   if (selectedGender.value !== 'all') {
-    filtered = filtered.filter(p => p.gender === selectedGender.value)
+    filtered = filtered.filter((p) => p.gender === selectedGender.value)
   }
   if (selectedCategory.value !== 'all') {
-    filtered = filtered.filter(p => p.category === selectedCategory.value)
+    filtered = filtered.filter((p) => p.category === selectedCategory.value)
   }
 
   if (sortBy.value === 'price-asc') {
@@ -71,11 +114,11 @@ const filteredProducts = computed(() => {
 
   return filtered
 })
-//
-// const filteredProducts = computed(() => {
-//   // Дополнительно сортировать можно здесь, если нужно
-//   return [...products.value]
-// })
+
+function resetFilters() {
+  selectedCategory.value = 'all'
+  selectedGender.value = 'all'
+}
 
 </script>
 
@@ -116,6 +159,26 @@ const filteredProducts = computed(() => {
             <!-- Category Filter -->
             <div class="md:col-span-1">
               <div class="bg-white rounded-lg p-6 border border-neutral-200">
+                <h3 class="font-semibold text-slate-900 mb-4">Для кого</h3>
+                <div class="space-y-3">
+                  <button
+                    v-for="g in genders"
+                    :key="g.id"
+                    type="button"
+                    @click="selectedGender = g.id"
+                    :class="[
+                      'w-full text-left px-3 py-2 rounded-md text-sm transition-colors',
+                      selectedGender === g.id
+                        ? 'bg-slate-900 text-white font-medium'
+                        : 'text-slate-700 hover:bg-neutral-100',
+                    ]"
+                  >
+                    {{ g.name }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-lg p-6 border border-neutral-200 mt-4">
                 <div class="flex items-center gap-2 mb-4">
                   <Filter :size="18" class="text-slate-900" />
                   <h3 class="font-semibold text-slate-900">Категории</h3>
@@ -204,7 +267,7 @@ const filteredProducts = computed(() => {
                   <!-- Product Image -->
                   <div class="relative overflow-hidden bg-neutral-100 h-64">
                     <img
-                      :src="product.image"
+                      :src="resolveBackendMediaUrl(product.image)"
                       :alt="product.name"
                       class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -237,7 +300,7 @@ const filteredProducts = computed(() => {
                       <div class="flex items-baseline gap-2 mb-4">
                         <span class="text-lg font-bold text-slate-900">{{ product.price }} ₽</span>
                         <span
-                          v-if="product.originalPrice > product.price"
+                          v-if="product.originalPrice != null && product.originalPrice > product.price"
                           class="text-sm text-slate-500 line-through"
                         >
                           {{ product.originalPrice }} ₽
@@ -265,10 +328,10 @@ const filteredProducts = computed(() => {
                 class="col-span-full text-center py-12"
               >
                 <Typography as="p" variant="body" class="text-slate-600 mb-4">
-                  Товары в этой категории не найдены
+                  По выбранным фильтрам товаров нет
                 </Typography>
-                <Button variant="secondary" @click="selectedCategory = 'all'">
-                  Показать все товары
+                <Button variant="secondary" @click="resetFilters">
+                  Сбросить фильтры
                 </Button>
               </div>
             </div>

@@ -8,6 +8,7 @@ import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart } from 'lucide-vue-next'
+import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 
 const route = useRoute()
 const productId = route.params.id
@@ -21,7 +22,7 @@ async function fetchProduct() {
       headers: { Accept: 'application/json' },
     })
     product.value = response.data
-    selectedMedia.value = product.value.image // первое изображение по умолчанию
+    selectedMedia.value = resolveBackendMediaUrl(product.value.image) // первое изображение по умолчанию
   } catch (err) {
     console.error(err)
   }
@@ -30,7 +31,7 @@ async function fetchProduct() {
 onMounted(fetchProduct)
 
 function selectMedia(url: string) {
-  selectedMedia.value = url
+  selectedMedia.value = resolveBackendMediaUrl(url)
 }
 
 function addToCart() {
@@ -52,7 +53,7 @@ function addToCart() {
               @click="selectMedia(media)"
               class="border rounded overflow-hidden hover:border-slate-900"
           >
-            <img :src="media" class="w-20 h-20 object-cover" />
+            <img :src="resolveBackendMediaUrl(media)" class="w-20 h-20 object-cover" />
           </button>
         </div>
 

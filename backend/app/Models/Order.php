@@ -35,6 +35,8 @@ class Order extends Model
         'recipient_phone',
         'terms_accepted',
         'total_amount',
+        'yookassa_payment_id',
+        'yookassa_payment_status',
     ];
 
     protected function casts(): array

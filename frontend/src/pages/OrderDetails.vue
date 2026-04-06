@@ -52,13 +52,23 @@ interface OrderDetails {
 const route = useRoute()
 const router = useRouter()
 const { showToast } = useToast()
-const { loadProducts, resolveProductId, products } = useProductLinkResolver()
+const { loadProducts, resolveProductId, resolveProductImage, products } = useProductLinkResolver()
 
 function productHref(productName: string, orderGender?: string | null): string | null {
   void products.value.length
   const id = resolveProductId(productName, orderGender)
   return id != null ? `/product/${id}` : null
 }
+
+const itemImageByLineId = computed(() => {
+  const o = order.value
+  if (!o?.items?.length) return {} as Record<number, string | null>
+  const out: Record<number, string | null> = {}
+  for (const item of o.items) {
+    out[item.id] = resolveProductImage(item.product_name, o.child_gender)
+  }
+  return out
+})
 
 const loading = ref(false)
 const order = ref<OrderDetails | null>(null)
@@ -284,15 +294,49 @@ onMounted(() => {
               class="flex flex-col sm:flex-row sm:items-start gap-4 px-4 py-4 md:px-5 md:py-5"
             >
               <div
-                class="shrink-0 w-20 h-20 rounded-lg bg-neutral-100 border border-neutral-200 flex items-center justify-center text-slate-400"
-                aria-hidden="true"
+                class="shrink-0 w-20 h-20 rounded-lg bg-neutral-100 border border-neutral-200 overflow-hidden flex items-center justify-center text-slate-400"
               >
-                <Package :size="32" stroke-width="1.25" />
+                <RouterLink
+                  v-if="productHref(item.product_name, order.child_gender)"
+                  :to="productHref(item.product_name, order.child_gender)!"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex h-full w-full items-center justify-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 rounded-lg"
+                >
+                  <img
+                    v-if="itemImageByLineId[item.id]"
+                    :src="itemImageByLineId[item.id]!"
+                    :alt="item.product_name"
+                    class="h-full w-full object-cover"
+                  />
+                  <Package
+                    v-else
+                    :size="32"
+                    stroke-width="1.25"
+                    aria-hidden="true"
+                  />
+                </RouterLink>
+                <template v-else>
+                  <img
+                    v-if="itemImageByLineId[item.id]"
+                    :src="itemImageByLineId[item.id]!"
+                    :alt="item.product_name"
+                    class="h-full w-full object-cover"
+                  />
+                  <Package
+                    v-else
+                    :size="32"
+                    stroke-width="1.25"
+                    aria-hidden="true"
+                  />
+                </template>
               </div>
               <div class="flex-1 min-w-0">
                 <RouterLink
                   v-if="productHref(item.product_name, order.child_gender)"
                   :to="productHref(item.product_name, order.child_gender)!"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   class="font-medium text-slate-900 text-sm md:text-base leading-snug hover:text-slate-700 underline-offset-2 hover:underline inline-block"
                 >
                   {{ item.product_name }}
@@ -307,7 +351,7 @@ onMounted(() => {
                   Размер: {{ item.size_override }}
                 </p>
                 <p v-if="item.line_comment" class="text-xs text-slate-600 mt-1">
-                  {{ item.line_comment }}
+                  <span class="text-slate-500">Комментарий: </span>{{ item.line_comment }}
                 </p>
               </div>
               <div class="text-left sm:text-right shrink-0 sm:pl-4">

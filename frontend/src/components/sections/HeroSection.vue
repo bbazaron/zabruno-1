@@ -3,7 +3,7 @@ import { useRouter } from 'vue-router'
 import Card from '../ui/Card.vue'
 import Button from '../ui/Button.vue'
 import Typography from '../ui/Typography.vue'
-import { Calendar, CheckCircle2, Leaf, ArrowRight } from 'lucide-vue-next'
+import { Calendar, CheckCircle2, Leaf } from 'lucide-vue-next'
 
 const router = useRouter()
 
@@ -41,57 +41,71 @@ const cards = [
 </script>
 
 <template>
-  <section class="relative w-full">
+  <section class="relative w-full min-h-[100dvh] overflow-hidden">
 
-    <!-- Background Image -->
-    <div class="absolute inset-0 w-full h-full overflow-hidden">
+    <!-- Фон: только object-contain + естественные пропорции; пустоты закрывает фоновый цвет (без растягивания) -->
+    <div
+      class="pointer-events-none absolute inset-0 z-0 min-h-[100dvh] overflow-hidden bg-[#e9e8e6]"
+      aria-hidden="true"
+    >
       <img
-          src="/images/Home/background.png"
-          alt="School uniform showcase"
-          class="w-full h-full object-contain object-top  scale-90"
-          style="transform: translateZ(-50px) scale(1.15);"
+        src="/images/Home/background.png"
+        alt=""
+        decoding="async"
+        fetchpriority="high"
+        class="mx-auto block h-auto w-full max-w-[100rem] object-contain object-top"
       />
     </div>
 
     <!-- Content over image -->
-    <div class="relative z-10 min-h-screen flex flex-col pt-12 md:pt-14 font-sans">
+    <div class="relative z-10 flex min-h-[100dvh] flex-col pt-12 md:min-h-screen md:pt-14 font-sans">
 
-      <div class="flex-1 flex flex-col justify-between">
+      <div class="flex flex-1 flex-col justify-between">
         <!-- Top Section with Title and CTAs -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-4 md:pt-6">
-          <div class="grid md:grid-cols-2 gap-8 lg:gap-12">
+        <div class="max-w-7xl mx-auto w-full px-4 pt-2 sm:px-6 sm:pt-4 md:pt-6 lg:px-8">
+          <div class="grid gap-6 md:grid-cols-2 md:gap-8 lg:gap-12">
             <!-- Left Content -->
-            <div class="space-y-4">
-              <div class="space-y-4">
-                <div class="space-y-2">
-                  <div class="text-5xl md:text-6xl font-light tracking-tight text-slate-900 leading-[1.1]"
-                       style="font-family: 'Playfair Display', serif;">
+            <div class="max-w-xl space-y-4 md:max-w-none">
+              <div class="space-y-3 sm:space-y-4">
+                <div class="space-y-1 sm:space-y-2">
+                  <div
+                    class="text-[1.85rem] leading-[1.08] font-light tracking-tight text-slate-900 min-[400px]:text-[2.05rem] sm:text-4xl md:text-5xl lg:text-6xl"
+                    style="font-family: 'Playfair Display', serif;"
+                  >
                     Школьная форма
                   </div>
 
-                  <div class="text-3xl md:text-4xl font-light tracking-tight text-slate-900 uppercase leading-[1.1]">
+                  <div
+                    class="text-xl font-light uppercase leading-tight tracking-tight text-slate-900 sm:text-2xl md:text-3xl lg:text-4xl"
+                  >
                     произведённая
                   </div>
 
-                  <div>
+                  <!-- Надпись-картинка: только max-width ИЛИ max-height через w-auto h-auto, иначе ломается соотношение сторон -->
+                  <div class="mt-2 max-w-full sm:mt-3 md:mt-4 md:-ml-4 lg:-ml-6">
                     <img
-                        src="/images/Home/v-zabaikalskom-krae.png"
-                        alt="в Забайкальском крае"
-                        class="w-auto h-70 md:h-74 object-contain mt-4 md:-mt-22 -ml-6 md:-ml-6"
+                      src="/images/Home/v-zabaikalskom-krae.png"
+                      alt="в Забайкальском крае"
+                      decoding="async"
+                      class="block h-auto w-auto max-w-[min(100%,17.5rem)] object-contain object-left sm:max-w-[min(100%,21rem)] md:max-w-[min(100%,26rem)] lg:max-w-[min(100%,30rem)] xl:max-w-[min(100%,34rem)]"
                     />
                   </div>
                 </div>
-                <Typography as="p" variant="body" class="text-slate-600 text-lg leading-relaxed max-w-md -mt-10 md:-mt-22">
+                <Typography
+                  as="p"
+                  variant="body"
+                  class="mt-3 max-w-md text-base leading-relaxed text-slate-600 sm:mt-4 sm:text-lg md:mt-5 lg:mt-6"
+                >
                   Кардиганы, жилеты и юбки из натурального хлопка
                 </Typography>
               </div>
 
               <!-- CTAs -->
-              <div class="flex flex-col sm:flex-row gap-4 mt-4">
-                <Button variant="primary" size="lg" type="button" @click="goToOrderCheckout">
+              <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-4 sm:pt-2">
+                <Button variant="primary" size="lg" type="button" class="w-full sm:w-auto" @click="goToOrderCheckout">
                   Оформить заказ →
                 </Button>
-                <Button variant="secondary" size="lg" as="link" href="/genderSelect">
+                <Button variant="secondary" size="lg" as="link" href="/catalog" class="w-full sm:w-auto">
                   Смотреть коллекцию
                 </Button>
               </div>
@@ -103,9 +117,9 @@ const cards = [
         </div>
 
         <!-- Feature Icons - Centered vertically between buttons and cards -->
-        <div class="flex gap-3 flex-wrap items-start my-12">
-          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-            <div class="flex gap-3 flex-wrap">
+        <div class="my-6 flex flex-wrap items-start gap-3 md:my-12">
+          <div class="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-wrap gap-x-4 gap-y-2 sm:gap-3">
               <div
                   v-for="(feature, idx) in features"
                   :key="idx"

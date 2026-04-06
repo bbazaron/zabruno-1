@@ -6,7 +6,7 @@ import axios from 'axios'
 
 const app = createApp(App)
 
-axios.defaults.withCredentials = true 
+axios.defaults.withCredentials = true
 axios.defaults.baseURL = 'http://localhost'
 
 app.use(router)

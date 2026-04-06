@@ -2,11 +2,18 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
+import * as XLSX from 'xlsx-js-style'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
+
+interface AdminOrderItem {
+  product_name: string
+  quantity: number
+  size_override?: string | null
+}
 
 interface AdminOrder {
   id: number
@@ -19,6 +26,9 @@ interface AdminOrder {
   child_full_name?: string
   settlement?: string
   school?: string
+  /** Размер по таблице (заказ); подставляется в позицию, если нет size_override */
+  size_from_table?: string
+  items?: AdminOrderItem[]
   user?: {
     id: number
     name: string
@@ -69,7 +79,7 @@ function orderLocalDateKey(iso: string): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return `${day}-${m}-${y}`
 }
 
 function normalizeSearchInput(raw: string): string {
@@ -146,6 +156,174 @@ function openOrder(orderId: number) {
   router.push(`/admin/orders/${orderId}`)
 }
 
+/** Подписи статусов для экспорта (как в кабинете / админке) */
+const STATUS_LABEL_RU: Record<string, string> = {
+  pending: 'В обработке',
+  confirmed: 'Подтверждён',
+  processing: 'В работе',
+  production: 'В производстве',
+  completed: 'Завершён',
+  cancelled: 'Отменён',
+}
+
+function statusLabelRu(status: string): string {
+  const k = String(status).toLowerCase().replace(/\s+/g, '_')
+  return STATUS_LABEL_RU[k] ?? status
+}
+
+function orderTotalNumber(raw: string | number | null | undefined): number | '' {
+  if (raw === null || raw === undefined || raw === '') return ''
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw))
+  return Number.isFinite(n) ? n : ''
+}
+
+function exportOrdersXlsxFileName(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `zakazy_${day}-${m}-${y}.xlsx`
+}
+
+/** Заказы, которые не должны попадать в сводку «для производства» */
+const PRODUCTION_EXCLUDED_STATUSES = new Set(['cancelled', 'completed'])
+
+function effectiveLineSize(item: AdminOrderItem, order: AdminOrder): string {
+  const o = item.size_override != null ? String(item.size_override).trim() : ''
+  if (o) return o
+  const t = (order.size_from_table || '').trim()
+  return t || '—'
+}
+
+function compareSizeLabels(a: string, b: string): number {
+  const da = /^\d+$/.test(a)
+  const db = /^\d+$/.test(b)
+  if (da && db) return parseInt(a, 10) - parseInt(b, 10)
+  return a.localeCompare(b, 'ru', { numeric: true })
+}
+
+/**
+ * Агрегация позиций order_items по (product_name + размер):
+ * размер = size_override строки, иначе size_from_table заказа.
+ */
+function aggregateProductionForOrders(list: AdminOrder[]) {
+  const map = new Map<string, { product_name: string; size: string; quantity: number }>()
+
+  for (const order of list) {
+    const st = String(order.status || '').toLowerCase()
+    if (PRODUCTION_EXCLUDED_STATUSES.has(st)) continue
+
+    for (const item of order.items ?? []) {
+      const name = String(item.product_name || '').trim()
+      if (!name) continue
+      const qty = Math.max(0, Math.floor(Number(item.quantity)) || 0)
+      if (qty <= 0) continue
+      const size = effectiveLineSize(item, order)
+      const key = `${name}\u0000${size}`
+      const cur = map.get(key)
+      if (cur) cur.quantity += qty
+      else map.set(key, { product_name: name, size, quantity: qty })
+    }
+  }
+
+  const rows = [...map.values()]
+  rows.sort((x, y) => {
+    const c = x.product_name.localeCompare(y.product_name, 'ru')
+    if (c !== 0) return c
+    return compareSizeLabels(x.size, y.size)
+  })
+
+  return rows.map((r) => ({
+    ...r,
+    summary_line: `${r.product_name}, размер ${r.size} — ${r.quantity} шт`,
+  }))
+}
+
+function exportProductionXlsxFileName(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `proizvodstvo_${day}-${m}-${y}.xlsx`
+}
+
+/** Сводка по товарам и размерам для производства (.xlsx). Учитываются заказы из текущей выборки (фильтры даты и поиска). */
+function exportProductionToXlsx() {
+  const list = filteredOrders.value
+  if (list.length === 0) {
+    showToast('Нет заказов в текущей выборке', 'error')
+    return
+  }
+
+  const agg = aggregateProductionForOrders(list)
+  if (agg.length === 0) {
+    showToast('Нет позиций: проверьте состав заказов или исключённые статусы (отменён, завершён)', 'error')
+    return
+  }
+
+  const rows = agg.map((r) => ({
+    'Товар / модель': r.product_name,
+    Размер: r.size,
+    'Кол-во (шт.)': r.quantity,
+    'Сводная строка': r.summary_line,
+  }))
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Производство')
+  XLSX.writeFile(wb, exportProductionXlsxFileName())
+  showToast('Сводка для производства скачана', 'success')
+}
+
+/** Жирные заголовки и выравнивание по левому краю для листа экспорта заказов. */
+function applyOrdersExportSheetLayout(ws: XLSX.WorkSheet) {
+  const ref = ws['!ref']
+  if (!ref) return
+  const range = XLSX.utils.decode_range(ref)
+  const leftAlign = { horizontal: 'left' as const, vertical: 'center' as const, wrapText: true }
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      const cell = ws[addr]
+      if (!cell) continue
+      cell.s = {
+        alignment: leftAlign,
+        ...(r === 0 ? { font: { bold: true } } : {}),
+      }
+    }
+  }
+}
+
+/** Выгрузка всех загруженных заказов в Excel (.xlsx) через SheetJS. */
+function exportOrdersToXlsx() {
+  const list = orders.value
+  if (list.length === 0) {
+    showToast('Нет заказов для экспорта', 'error')
+    return
+  }
+
+  const sorted = sortOrdersByDate([...list])
+  const rows = sorted.map((o) => ({
+    '№ заказа': o.id,
+    Дата: formatDate(o.created_at),
+    Статус: statusLabelRu(o.status || ''),
+    'Сумма (руб.)': orderTotalNumber(o.total_amount),
+    Заказчик: o.parent_full_name || o.user?.name || '',
+    Ребёнок: o.child_full_name || '',
+    Телефон: o.parent_phone || '',
+    Email: o.parent_email || o.user?.email || '',
+    'Населённый пункт': o.settlement || '',
+    Школа: o.school || '',
+  }))
+
+  const ws = XLSX.utils.json_to_sheet(rows)
+  applyOrdersExportSheetLayout(ws)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Заказы')
+  XLSX.writeFile(wb, exportOrdersXlsxFileName())
+  showToast('Файл скачан', 'success')
+}
+
 async function loadAllOrders() {
   const token = getStoredToken()
   if (!token) {
@@ -203,9 +381,6 @@ onMounted(() => {
         <div v-else-if="orders.length === 0" class="text-slate-600">Заказов пока нет</div>
 
         <template v-else>
-          <p class="text-xs text-slate-500 mb-3">
-            Фильтры работают сразу при вводе — кнопку Enter нажимать не нужно. Поиск здесь только на этой странице со списком заказов (не внутри карточки одного заказа).
-          </p>
           <div class="mb-4 flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end">
             <div class="flex-1 min-w-[200px]">
               <label class="block text-xs font-medium text-slate-600 mb-1" for="all-orders-search">Поиск</label>
@@ -245,6 +420,24 @@ onMounted(() => {
                 type="date"
                 class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
+            </div>
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                class="w-full sm:w-auto !border !border-[#185c37] !bg-[#217346] !text-white !shadow-sm hover:!bg-[#1a5c38] hover:!border-[#14532f] focus-visible:!ring-[#217346]/45"
+                @click="exportOrdersToXlsx"
+              >
+                Экспорт всех заказов
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                class="w-full sm:w-auto !border !border-[#185c37] !bg-[#217346] !text-white !shadow-sm hover:!bg-[#1a5c38] hover:!border-[#14532f] focus-visible:!ring-[#217346]/45"
+                @click="exportProductionToXlsx"
+              >
+                Экспорт для производства
+              </Button>
             </div>
           </div>
 

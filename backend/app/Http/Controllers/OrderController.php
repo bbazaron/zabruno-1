@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\EstimateOrderTotalRequest;
 use App\Http\Requests\StoreOrderRequest;
+use App\Http\Requests\UpdateAdminOrderRequest;
 use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,11 +17,18 @@ class OrderController extends Controller
 
     public function createOrder(StoreOrderRequest $request): JsonResponse
     {
-        $order = $this->orderService->createOrder($request, $request->validated());
+        try {
+            $result = $this->orderService->createOrder($request, $request->validated());
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
 
         return response()->json([
-            'message' => 'Заказ принят',
-            'order' => $order,
+            'message' => 'Заказ создан',
+            'order' => $result['order'],
+            'confirmation_url' => $result['confirmation_url'],
         ], 201);
     }
 
@@ -82,7 +90,7 @@ class OrderController extends Controller
     public function updateAdminOrderStatus(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'string', 'max:32', 'in:pending,confirmed,cancelled,completed'],
+            'status' => ['required', 'string', 'max:32', 'in:pending,confirmed,processing,production,cancelled,completed'],
         ]);
 
         $order = $this->orderService->updateAdminOrderStatus($id, $validated['status']);
@@ -95,6 +103,22 @@ class OrderController extends Controller
 
         return response()->json([
             'message' => 'Статус обновлён',
+            'order' => $order,
+        ]);
+    }
+
+    public function updateAdminOrder(UpdateAdminOrderRequest $request, int $id): JsonResponse
+    {
+        $order = $this->orderService->updateAdminOrder($id, $request->validated());
+
+        if ($order === null) {
+            return response()->json([
+                'message' => 'Order not found',
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Заказ обновлён',
             'order' => $order,
         ]);
     }

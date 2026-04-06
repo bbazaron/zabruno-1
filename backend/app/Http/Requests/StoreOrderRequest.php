@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class StoreOrderRequest extends FormRequest
 {
@@ -69,9 +71,35 @@ class StoreOrderRequest extends FormRequest
         }
 
         $rawEmail = $this->input('parent_email');
-        if ($rawEmail === null || (is_string($rawEmail) && trim($rawEmail) === '')) {
-            $this->merge(['parent_email' => '']);
+        $emailTrim = is_string($rawEmail) ? trim($rawEmail) : '';
+        if ($emailTrim === '') {
+            $user = $this->userFromBearerToken();
+            $fallback = '';
+            if ($user !== null) {
+                $accountEmail = trim((string) $user->email);
+                if ($accountEmail !== '' && filter_var($accountEmail, FILTER_VALIDATE_EMAIL)) {
+                    $fallback = $accountEmail;
+                }
+            }
+            $this->merge(['parent_email' => $fallback]);
         }
+    }
+
+    private function userFromBearerToken(): ?User
+    {
+        $token = $this->bearerToken();
+        if ($token === null || $token === '') {
+            return null;
+        }
+
+        $accessToken = PersonalAccessToken::findToken($token);
+        if ($accessToken === null) {
+            return null;
+        }
+
+        $user = $accessToken->tokenable;
+
+        return $user instanceof User ? $user : null;
     }
 
     public function rules(): array

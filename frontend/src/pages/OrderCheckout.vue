@@ -1,20 +1,39 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Typography from '../components/ui/Typography.vue'
 import Button from '../components/ui/Button.vue'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
+import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 
 const inputClass =
   'w-full border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500'
 
+const route = useRoute()
+
 const step = ref(1)
 const totalSteps = 6
 const submitLoading = ref(false)
 const submitted = ref(false)
+/** Возврат с страницы оплаты ЮKassa */
+const returnedFromPayment = ref(false)
+
+/** Есть токен — бэкенд подставит email учётной записи, если поле пустое */
+const isAuthenticated = ref(false)
+
+onMounted(() => {
+  const q = route.query.fromPayment
+  if (Array.isArray(q) ? q[0] === '1' : q === '1') {
+    submitted.value = true
+    returnedFromPayment.value = true
+  }
+  const t = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('token')
+  isAuthenticated.value = Boolean(t && String(t).trim())
+})
 
 const stepLabels = [
   'Данные ребёнка',
@@ -506,9 +525,19 @@ async function submitOrder() {
   if (!validateStep(6)) return
   submitLoading.value = true
   try {
-    await axios.post('/api/createOrder', buildOrderPayload(), {
-      headers: getAuthHeaders(),
-    })
+    const { data } = await axios.post<{ confirmation_url?: string | null }>(
+      '/api/createOrder',
+      buildOrderPayload(),
+      {
+        headers: getAuthHeaders(),
+      },
+    )
+    const payUrl = data?.confirmation_url
+    if (typeof payUrl === 'string' && payUrl.length > 0) {
+      window.location.assign(payUrl)
+      return
+    }
+    returnedFromPayment.value = false
     submitted.value = true
   } catch (err: unknown) {
     console.error(err)
@@ -516,6 +545,15 @@ async function submitOrder() {
   } finally {
     submitLoading.value = false
   }
+}
+
+function emailForSummary(): string {
+  const em = parentEmail.value.trim()
+  if (em) return em
+  if (isAuthenticated.value) {
+    return 'как в учётной записи (подставится при отправке заказа)'
+  }
+  return '—'
 }
 
 const summaryLines = computed(() => {
@@ -539,7 +577,7 @@ const summaryLines = computed(() => {
     { label: 'Комментарий к комплекту', value: kitComment.value || '—' },
     { label: 'ФИО родителя', value: parentFullName.value },
     { label: 'Телефон', value: parentPhone.value },
-    { label: 'Email', value: parentEmail.value.trim() || '—' },
+    { label: 'Email', value: emailForSummary() },
     { label: 'Мессенджер MAX', value: messengerMax.value || '—' },
     { label: 'Telegram', value: messengerTelegram.value || '—' },
     { label: 'Получатель', value: recipientIsCustomer.value ? 'Заказчик' : recipientName.value },
@@ -557,10 +595,15 @@ const summaryLines = computed(() => {
       <div class="max-w-4xl mx-auto w-full">
         <div v-if="submitted" class="bg-white p-8 rounded-lg shadow-md text-center">
           <Typography as="h1" variant="h2" class="mb-4 text-slate-900">
-            Заказ отправлен
+            {{ returnedFromPayment ? 'Возврат из оплаты' : 'Заказ оформлен' }}
           </Typography>
           <Typography as="p" variant="body" class="text-slate-600 mb-8">
-            Мы свяжемся с вами для уточнения деталей. Спасибо за заказ!
+            <template v-if="returnedFromPayment">
+              Если оплата в ЮKassa прошла успешно, заказ поступит в обработку. Статус можно посмотреть в разделе «Мои заказы».
+            </template>
+            <template v-else>
+              Сумма заказа нулевая — оплата не требуется. Мы свяжемся с вами для уточнения деталей. Спасибо за заказ!
+            </template>
           </Typography>
           <Button variant="primary" class="inline-flex" @click="$router.push('/')">
             На главную
@@ -850,7 +893,7 @@ const summaryLines = computed(() => {
                       >
                         <img
                           v-if="kit.image"
-                          :src="kit.image"
+                          :src="resolveBackendMediaUrl(kit.image)"
                           :alt="kit.name"
                           class="h-14 w-14 rounded object-cover border border-neutral-200 transition group-hover:ring-2 group-hover:ring-slate-400"
                         />
@@ -864,7 +907,7 @@ const summaryLines = computed(() => {
                       <template v-else>
                         <img
                           v-if="kit.image"
-                          :src="kit.image"
+                          :src="resolveBackendMediaUrl(kit.image)"
                           :alt="kit.name"
                           class="h-14 w-14 rounded object-cover border border-neutral-200 shrink-0"
                         />
@@ -1010,7 +1053,16 @@ const summaryLines = computed(() => {
               <input v-model="parentPhone" type="tel" :class="inputClass" placeholder="+7 …" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">
+                Email
+                <span class="text-slate-500 font-normal"> (необязательно)</span>
+              </label>
+              <p
+                v-if="isAuthenticated"
+                class="mb-1.5 text-xs text-slate-500 leading-relaxed"
+              >
+                Если не заполнить, для уведомлений будет использован email вашей учётной записи.
+              </p>
               <input v-model="parentEmail" type="email" :class="inputClass" />
             </div>
             <div>
@@ -1126,7 +1178,7 @@ const summaryLines = computed(() => {
                   >
                     <img
                       v-if="row.image"
-                      :src="row.image"
+                      :src="resolveBackendMediaUrl(row.image)"
                       :alt="row.productName"
                       class="w-full h-full object-cover"
                     />
@@ -1262,7 +1314,7 @@ const summaryLines = computed(() => {
                   :disabled="submitLoading"
                   @click="submitOrder"
                 >
-                  {{ submitLoading ? 'Отправка…' : 'Отправить заказ' }}
+                  {{ submitLoading ? 'Переход…' : 'Перейти к оплате' }}
                 </Button>
               </div>
             </div>
