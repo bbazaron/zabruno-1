@@ -86,7 +86,7 @@ function addToCart() {
               variant="primary"
               class="w-full flex items-center justify-center gap-2 mt-4"
           >
-            <ShoppingCart size="16" />
+            <ShoppingCart :size="16" />
             Добавить в корзину
           </Button>
         </div>

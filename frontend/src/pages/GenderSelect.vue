@@ -18,7 +18,7 @@ const genders = [
     name: 'Для мальчиков',
     image: '/images/SelectGender/boy.jpg',
   },
-]
+] as const
 
 function goToCatalog(gender: 'boys' | 'girls') {
   router.push({ path: '/catalog', query: { gender } })

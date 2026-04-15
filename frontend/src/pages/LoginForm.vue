@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
 import axios from 'axios'
+import {ref} from "vue";
 
 const router = useRouter()
 const { showToast } = useToast()
