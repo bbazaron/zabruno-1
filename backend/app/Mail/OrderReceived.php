@@ -21,7 +21,7 @@ class OrderReceived extends Mailable implements ShouldQueue
     public function __construct(
         public Order $order,
     ) {
-        $this->onQueue(env('RABBITMQ_MAIL_QUEUE', 'mail'));
+        $this->onConnection('database')->onQueue(env('ORDER_MAIL_QUEUE', 'mail'));
     }
 
     public function envelope(): Envelope

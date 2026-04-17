@@ -21,6 +21,7 @@ class OrderService
 
     /**
      * Создаёт заказ и платёж в ЮKassa в одной транзакции БД. При сбое API заказ откатывается.
+     * Письмо «заказ принят» ставится в очередь БД ({@see \App\Mail\OrderReceived}).
      *
      * @return array{order: Order, confirmation_url: string|null}
      */
@@ -98,24 +99,31 @@ class OrderService
         DB::afterCommit(function () use ($email, $orderId): void {
             $fresh = Order::query()->with('items')->find($orderId);
             if ($fresh === null) {
+                Log::warning('Письмо о заказе не поставлено в очередь: заказ не найден после коммита', [
+                    'order_id' => $orderId,
+                ]);
+
                 return;
             }
 
             try {
                 Mail::to($email)->queue(new OrderReceived($fresh));
             } catch (\Throwable $e) {
+                Log::error('Не удалось поставить в очередь БД письмо о принятом заказе', [
+                    'order_id' => $orderId,
+                    'queue_connection' => 'database',
+                    'exception' => $e,
+                ]);
+                report($e);
+
                 try {
-                    Log::error('Не удалось отправить письмо о принятом заказе', [
-                        'order_id' => $orderId,
-                        'message' => $e->getMessage(),
-                    ]);
-                } catch (\Throwable $logWriteFailed) {
                     error_log(sprintf(
-                        'OrderReceived mail failed (order_id=%s): %s | log failed: %s',
+                        'OrderReceived queue failed (order_id=%s, connection=database): %s',
                         (string) $orderId,
-                        $e->getMessage(),
-                        $logWriteFailed->getMessage()
+                        $e->getMessage()
                     ));
+                } catch (\Throwable) {
+                    // ignore secondary failures
                 }
             }
         });
