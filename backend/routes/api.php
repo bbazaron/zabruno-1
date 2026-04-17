@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminProductController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\UserController;
@@ -25,6 +26,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/orders/{id}', [OrderController::class, 'getAdminOrderById']);
         Route::patch('/admin/orders/{id}', [OrderController::class, 'updateAdminOrder']);
         Route::patch('/admin/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus']);
+
+        Route::get('/admin/products', [AdminProductController::class, 'index']);
+        Route::post('/admin/products', [AdminProductController::class, 'store']);
+        Route::patch('/admin/products/{id}', [AdminProductController::class, 'update']);
+        Route::delete('/admin/products/{id}', [AdminProductController::class, 'destroy']);
     });
 
     Route::middleware('role:super_admin')->group(function () {

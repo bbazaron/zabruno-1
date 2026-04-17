@@ -34,7 +34,6 @@ function parseGenderQuery(q: unknown): GenderFilter {
   return 'all'
 }
 
-const API = import.meta.env.VITE_API_URL
 const route = useRoute()
 const router = useRouter()
 
@@ -47,7 +46,7 @@ const products = ref<CatalogProduct[]>([])
 
 async function fetchProducts() {
   try {
-    const response = await axios.get(`${API}/api/index`, {
+    const response = await axios.get('/api/index', {
       params: {
         gender: selectedGender.value,
         category: selectedCategory.value,

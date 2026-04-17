@@ -367,12 +367,15 @@ onMounted(() => {
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <Typography as="h1" class="text-3xl md:text-4xl font-light">Все заказы</Typography>
 
-      <div class="mt-2 mb-8 flex gap-3">
+      <div class="mt-2 mb-8 flex flex-wrap gap-3">
         <Button variant="secondary" size="sm" @click="router.push('/admin')">
           Управление администраторами
         </Button>
         <Button variant="secondary" size="sm" @click="router.push('/admin/orders')">
           Управление заказами
+        </Button>
+        <Button variant="secondary" size="sm" @click="router.push('/admin/products')">
+          Управление товарами
         </Button>
       </div>
 

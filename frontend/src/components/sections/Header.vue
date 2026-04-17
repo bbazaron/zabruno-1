@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import axios from 'axios'
 import Button from '../ui/Button.vue'
 import { Menu, X, LogIn, LogOut, ShoppingBag } from 'lucide-vue-next'
@@ -83,11 +83,10 @@ const navItems = [
   { label: 'КОНТАКТЫ', to: '/contacts' },
 ]
 
-const navigateTo = (item: { to?: string; href?: string }) => {
-  if (item.to) {
-    mobileMenuOpen.value = false
-    router.push(item.to)
-  }
+/** Закрыть мобильное меню только при обычном переходе в той же вкладке */
+function onNavLinkClick(e: MouseEvent) {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+  mobileMenuOpen.value = false
 }
 
 const goToLogin = () => {
@@ -170,18 +169,14 @@ async function performLogout() {
 
       <!-- Desktop Navigation -->
       <div class="hidden md:flex items-center gap-8">
-        <button
+        <RouterLink
           v-for="item in navItems"
           :key="item.label"
-          type="button"
-          @click="navigateTo(item)"
-          :class="[
-            'text-sm font-medium transition-colors cursor-pointer',
-            item.to ? 'text-slate-600 hover:text-slate-900' : 'text-slate-600 hover:text-slate-900',
-          ]"
+          :to="item.to"
+          class="text-sm font-medium transition-colors text-slate-600 hover:text-slate-900"
         >
           {{ item.label }}
-        </button>
+        </RouterLink>
       </div>
 
       <!-- Right Actions -->
@@ -231,15 +226,15 @@ async function performLogout() {
       class="md:hidden border-t border-neutral-200 bg-white"
     >
       <div class="px-4 py-4 space-y-4">
-        <button
+        <RouterLink
           v-for="item in navItems"
           :key="item.label"
-          type="button"
-          @click="navigateTo(item)"
-          class="block w-full text-left text-sm font-medium text-slate-600 hover:text-slate-900 py-2 cursor-pointer"
+          :to="item.to"
+          class="block w-full text-left text-sm font-medium text-slate-600 hover:text-slate-900 py-2"
+          @click="onNavLinkClick"
         >
           {{ item.label }}
-        </button>
+        </RouterLink>
         <Button variant="primary" class="w-full" @click="goToOrders">
           {{ canManageOrders() ? 'Управление заказами' : 'Мои заказы' }}
         </Button>

@@ -12,6 +12,7 @@ import ProfileEdit from '../pages/ProfileEdit.vue'
 import AdminPanel from '../pages/AdminPanel.vue'
 import AllOrders from '../pages/AllOrders.vue'
 import AdminOrderDetails from '../pages/AdminOrderDetails.vue'
+import AdminProducts from '../pages/AdminProducts.vue'
 import Contacts from '../pages/Contacts.vue'
 import AboutUs from '../pages/AboutUs.vue'
 import AboutSize from '../pages/AboutSize.vue'
@@ -111,6 +112,15 @@ const routes = [
         path: '/admin/orders/:id',
         name: 'AdminOrderDetails',
         component: AdminOrderDetails,
+        meta: {
+            requiresAuth: true,
+            requiresAdmin: true,
+        },
+    },
+    {
+        path: '/admin/products',
+        name: 'AdminProducts',
+        component: AdminProducts,
         meta: {
             requiresAuth: true,
             requiresAdmin: true,

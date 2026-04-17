@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Typography from '../components/ui/Typography.vue'
@@ -12,6 +12,10 @@ const AUTH_TOKEN_KEY = 'auth_token'
 
 const inputClass =
   'w-full border border-neutral-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-500'
+
+/** Поля мерок: суффикс «см», цифровая клавиатура на телефоне */
+const measureInputClass =
+  `${inputClass} pr-10 tabular-nums [appearance:textfield]`
 
 const route = useRoute()
 
@@ -66,8 +70,49 @@ const classNum = ref('')
 const classLetter = ref('')
 const schoolYear = ref('')
 
+const classNumSelectOptions = Array.from({ length: 11 }, (_, i) => String(i + 1))
+const classLetterSelectOptions = [
+  'А',
+  'Б',
+  'В',
+  'Г',
+  'Д',
+  'Е',
+  'Ё',
+  'Ж',
+  'З',
+  'И',
+  'Й',
+  'К',
+  'Л',
+  'М',
+  'Н',
+  'О',
+  'П',
+  'Р',
+  'С',
+  'Т',
+  'У',
+  'Ф',
+  'Х',
+  'Ц',
+  'Ч',
+  'Ш',
+  'Щ',
+  'Ъ',
+  'Ы',
+  'Ь',
+  'Э',
+  'Ю',
+  'Я',
+]
+const schoolYearSelectOptions = ['26/27', '27/28', '28/29', '29/30']
+
 // Шаг 2
 const sizeFromTable = ref('')
+const sizeFromTableSelectOptions = Array.from({ length: (50 - 28) / 2 + 1 }, (_, i) =>
+  String(28 + i * 2),
+)
 const heightCm = ref('')
 const chestCm = ref('')
 const waistCm = ref('')
@@ -206,9 +251,104 @@ function normalizeKitLineQuantity(index: number) {
   line.quantity = String(Number.isFinite(n) && n >= 1 ? n : 1)
 }
 
+/** +7 и до 10 цифр; пустой ввод даёт «+7» */
+function normalizeRuPhoneInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length === 0) return '+7'
+  let core = digits
+  if (core.startsWith('8')) core = `7${core.slice(1)}`
+  if (!core.startsWith('7')) core = `7${core}`
+  core = core.slice(0, 11)
+  return `+${core}`
+}
+
+function isRuPhoneComplete(phone: string): boolean {
+  const d = phone.replace(/\D/g, '')
+  return d.length === 11 && d.startsWith('7')
+}
+
+/** 10 цифр после 7; незаполненные позиции — «0» (шаблон +7-000-000-00-00) */
+function digitsAfterSeven(phone: string): string {
+  const d = phone.replace(/\D/g, '')
+  if (d.length <= 1) return ''
+  return d.slice(1, 11)
+}
+
+function formatParentPhoneMask(phone: string): string {
+  const d7 = digitsAfterSeven(phone)
+  const chars: string[] = []
+  for (let i = 0; i < 10; i++) {
+    chars[i] = i < d7.length ? d7[i]! : '0'
+  }
+  const g1 = chars.slice(0, 3).join('')
+  const g2 = chars.slice(3, 6).join('')
+  const g3 = chars.slice(6, 8).join('')
+  const g4 = chars.slice(8, 10).join('')
+  return `+7-${g1}-${g2}-${g3}-${g4}`
+}
+
+function setParentPhoneFromDigitsAfter7(after7: string) {
+  const only = after7.replace(/\D/g, '').slice(0, 10)
+  parentPhone.value = only.length === 0 ? '+7' : `+7${only}`
+}
+
+function focusPhoneInputEnd(el: HTMLInputElement) {
+  nextTick(() => {
+    const pos = formatParentPhoneMask(parentPhone.value).length
+    el.setSelectionRange(pos, pos)
+  })
+}
+
+/** Ввод только с начала номера; нули маски не попадают в буфер (не парсим value целиком) */
+function onParentPhoneBeforeInput(e: Event) {
+  const be = e as InputEvent
+  if (be.isComposing) return
+  const el = e.target as HTMLInputElement
+
+  if (be.inputType === 'insertText' && be.data && /^\d+$/.test(be.data)) {
+    be.preventDefault()
+    const start = el.selectionStart ?? 0
+    const end = el.selectionEnd ?? 0
+    const displayLen = formatParentPhoneMask(parentPhone.value).length
+    const d = digitsAfterSeven(parentPhone.value)
+    const typed = be.data.replace(/\D/g, '')
+    let nextDigits: string
+    if (end > start && end - start === displayLen && displayLen > 0) {
+      nextDigits = typed.slice(0, 10)
+    } else {
+      nextDigits = (d + typed).slice(0, 10)
+    }
+    setParentPhoneFromDigitsAfter7(nextDigits)
+    focusPhoneInputEnd(el)
+    return
+  }
+
+  if (be.inputType === 'deleteContentBackward') {
+    be.preventDefault()
+    const start = el.selectionStart ?? 0
+    const end = el.selectionEnd ?? 0
+    const displayLen = formatParentPhoneMask(parentPhone.value).length
+    if (end > start && end - start === displayLen && displayLen > 0) {
+      setParentPhoneFromDigitsAfter7('')
+    } else {
+      const d = digitsAfterSeven(parentPhone.value)
+      setParentPhoneFromDigitsAfter7(d.slice(0, -1))
+    }
+    focusPhoneInputEnd(el)
+  }
+}
+
+function onParentPhonePaste(e: ClipboardEvent) {
+  e.preventDefault()
+  const text = e.clipboardData?.getData('text/plain') ?? ''
+  parentPhone.value = normalizeRuPhoneInput(text)
+  const el = e.target as HTMLInputElement
+  focusPhoneInputEnd(el)
+}
+
 // Шаг 4
 const parentFullName = ref('')
-const parentPhone = ref('')
+const parentPhone = ref('+7')
 const parentEmail = ref('')
 const messengerMax = ref('')
 const messengerTelegram = ref('')
@@ -239,7 +379,6 @@ watch(childGender, () => {
 }, { immediate: true })
 
 // Шаг 6
-const termsAccepted = ref(false)
 const orderTotalEstimate = ref<number | null>(null)
 const orderTotalLoading = ref(false)
 const orderTotalError = ref('')
@@ -398,7 +537,7 @@ function buildOrderPayload() {
     recipientIsCustomer: recipientIsCustomer.value,
     recipientName: recipientIsCustomer.value ? null : recipientName.value.trim(),
     recipientPhone: recipientPhone.value.trim(),
-    termsAccepted: termsAccepted.value,
+    termsAccepted: true,
   }
 }
 
@@ -456,8 +595,12 @@ function validateStep(n: number): boolean {
     }
   }
   if (n === 4) {
-    if (!parentFullName.value.trim() || !parentPhone.value.trim()) {
+    if (!parentFullName.value.trim()) {
       stepError.value = 'Заполните ФИО и телефон'
+      return false
+    }
+    if (!isRuPhoneComplete(parentPhone.value)) {
+      stepError.value = 'Введите полный номер: +7 и 10 цифр'
       return false
     }
     const em = parentEmail.value.trim()
@@ -473,12 +616,6 @@ function validateStep(n: number): boolean {
     }
     if (!recipientPhone.value.trim()) {
       stepError.value = 'Укажите телефон получателя'
-      return false
-    }
-  }
-  if (n === 6) {
-    if (!termsAccepted.value) {
-      stepError.value = 'Нужно согласие со сроками изготовления'
       return false
     }
   }
@@ -751,19 +888,30 @@ const summaryLines = computed(() => {
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Класс <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="classNum" type="text" :class="inputClass" placeholder="например, 5" />
+                <select v-model="classNum" :class="inputClass">
+                  <option value="" disabled>Выберите</option>
+                  <option v-for="n in classNumSelectOptions" :key="n" :value="n">{{ n }}</option>
+                </select>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Литера <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="classLetter" type="text" :class="inputClass" placeholder="А, Б…" />
+                <select v-model="classLetter" :class="inputClass">
+                  <option value="" disabled>Выберите</option>
+                  <option v-for="letter in classLetterSelectOptions" :key="letter" :value="letter">
+                    {{ letter }}
+                  </option>
+                </select>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Учебный год <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="schoolYear" type="text" :class="inputClass" placeholder="2025/2026" />
+                <select v-model="schoolYear" :class="inputClass">
+                  <option value="" disabled>Выберите</option>
+                  <option v-for="y in schoolYearSelectOptions" :key="y" :value="y">{{ y }}</option>
+                </select>
               </div>
             </div>
             <p class="text-xs text-slate-500 pt-1">
@@ -794,41 +942,103 @@ const summaryLines = computed(() => {
               >
                 Смотреть таблицу размеров
               </a>
-              <input
+              <select
                 id="order-size-from-table"
                 v-model="sizeFromTable"
-                type="text"
                 :class="inputClass"
-                placeholder="Например 42"
-              />
+              >
+                <option value="" disabled>Выберите</option>
+                <option v-for="s in sizeFromTableSelectOptions" :key="s" :value="s">{{ s }}</option>
+              </select>
             </div>
-            <Typography as="p" variant="small" class="text-slate-500">
-              Мерки (см):
-            </Typography>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Рост <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="heightCm" type="text" :class="inputClass" />
+                <div class="relative">
+                  <input
+                    v-model="heightCm"
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    enterkeyhint="next"
+                    :class="measureInputClass"
+                    placeholder="например, 152"
+                  />
+                  <span
+                    class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-400 select-none"
+                    aria-hidden="true"
+                  >
+                    см
+                  </span>
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Грудь <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="chestCm" type="text" :class="inputClass" />
+                <div class="relative">
+                  <input
+                    v-model="chestCm"
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    enterkeyhint="next"
+                    :class="measureInputClass"
+                    placeholder="например, 72"
+                  />
+                  <span
+                    class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-400 select-none"
+                    aria-hidden="true"
+                  >
+                    см
+                  </span>
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Талия <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="waistCm" type="text" :class="inputClass" />
+                <div class="relative">
+                  <input
+                    v-model="waistCm"
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    enterkeyhint="next"
+                    :class="measureInputClass"
+                    placeholder="например, 64"
+                  />
+                  <span
+                    class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-400 select-none"
+                    aria-hidden="true"
+                  >
+                    см
+                  </span>
+                </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Бёдра <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <input v-model="hipsCm" type="text" :class="inputClass" />
+                <div class="relative">
+                  <input
+                    v-model="hipsCm"
+                    type="text"
+                    inputmode="decimal"
+                    autocomplete="off"
+                    enterkeyhint="done"
+                    :class="measureInputClass"
+                    placeholder="например, 78"
+                  />
+                  <span
+                    class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-slate-400 select-none"
+                    aria-hidden="true"
+                  >
+                    см
+                  </span>
+                </div>
               </div>
             </div>
             <div>
@@ -1050,18 +1260,25 @@ const summaryLines = computed(() => {
               <label class="block text-sm font-medium text-slate-700 mb-1">
                 Телефон <span class="text-red-600" aria-hidden="true">*</span>
               </label>
-              <input v-model="parentPhone" type="tel" :class="inputClass" placeholder="+7 …" />
+              <input
+                :value="formatParentPhoneMask(parentPhone)"
+                type="tel"
+                inputmode="tel"
+                autocomplete="tel"
+                :class="[inputClass, 'tabular-nums']"
+                @beforeinput="onParentPhoneBeforeInput"
+                @paste="onParentPhonePaste"
+              />
             </div>
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1">
                 Email
-                <span class="text-slate-500 font-normal"> (необязательно)</span>
               </label>
               <p
                 v-if="isAuthenticated"
                 class="mb-1.5 text-xs text-slate-500 leading-relaxed"
               >
-                Если не заполнить, для уведомлений будет использован email вашей учётной записи.
+                По умолчанию будет использован email вашей учетной записи
               </p>
               <input v-model="parentEmail" type="email" :class="inputClass" />
             </div>
@@ -1252,12 +1469,13 @@ const summaryLines = computed(() => {
                 <dd class="text-sm text-slate-900 sm:col-span-2 whitespace-pre-wrap">{{ row.value }}</dd>
               </div>
             </dl>
-            <label class="flex items-start gap-3 cursor-pointer pt-2">
-              <input v-model="termsAccepted" type="checkbox" class="mt-1 w-4 h-4 rounded border-neutral-300" />
-              <span class="text-sm text-slate-700">
-                Согласен(на) со сроками изготовления и условиями предзаказа
-              </span>
-            </label>
+            <Typography
+              as="p"
+              variant="body"
+              class="mt-6 rounded-lg border border-slate-200 bg-slate-50/90 px-4 py-3 text-slate-700 leading-relaxed"
+            >
+              После оформления заказа менеджер свяжется с вами для уточнения деталей.
+            </Typography>
             <div
               v-if="submitError"
               class="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
