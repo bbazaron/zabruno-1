@@ -19,36 +19,44 @@ import AboutSize from '../pages/AboutSize.vue'
 import HowToOrder from '../pages/HowToOrder.vue'
 import axios from 'axios'
 
+const DEFAULT_DOCUMENT_TITLE = 'school-uniform-shop'
+
 const routes = [
   {
     path: '/',
     name: 'Home',
     component: Home,
+    meta: { title: 'Главная' },
   },
   {
     path: '/catalog',
     name: 'Catalog',
     component: Catalog,
+    meta: { title: 'Каталог' },
   },
   {
     path: '/contacts',
     name: 'Contacts',
     component: Contacts,
+    meta: { title: 'Контакты' },
   },
   {
     path: '/about',
     name: 'About',
     component: AboutUs,
+    meta: { title: 'О нас' },
   },
   {
     path: '/sizes',
     name: 'SizeGuide',
     component: AboutSize,
+    meta: { title: 'О размере' },
   },
   {
     path: '/how-to-order',
     name: 'HowToOrder',
     component: HowToOrder,
+    meta: { title: 'Как заказать' },
   },
     {
         path: '/genderSelect',
@@ -64,21 +72,25 @@ const routes = [
         path: '/signUpForm',
         name: 'SignUpForm',
         component: SignUpForm,
+        meta: { title: 'Регистрация' },
     },
     {
         path: '/login',
         name: 'LoginForm',
         component: LoginForm,
+        meta: { title: 'Логин' },
     },
     {
         path: '/orderCheckout',
         name: 'OrderCheckout',
         component: OrderCheckout,
+        meta: { title: 'Оформление заказа' },
     },
     {
         path: '/orders',
         name: 'Orders',
         component: Orders,
+        meta: { title: 'Профиль пользователя' },
     },
     {
         path: '/orders/:id',
@@ -89,12 +101,14 @@ const routes = [
         path: '/profile',
         name: 'ProfileEdit',
         component: ProfileEdit,
+        meta: { title: 'Редактировать профиль' },
     },
     {
         path: '/admin',
         name: 'AdminPanel',
         component: AdminPanel,
         meta: {
+            title: 'Админ панель',
             requiresAuth: true,
             requiresAdmin: true,
         },
@@ -104,6 +118,7 @@ const routes = [
         name: 'AllOrders',
         component: AllOrders,
         meta: {
+            title: 'Управление заказами',
             requiresAuth: true,
             requiresAdmin: true,
         },
@@ -122,6 +137,7 @@ const routes = [
         name: 'AdminProducts',
         component: AdminProducts,
         meta: {
+            title: 'Управление товарами',
             requiresAuth: true,
             requiresAdmin: true,
         },
@@ -132,6 +148,24 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+function documentTitleForOrderDetailsRoute(to: { name: unknown; params: Record<string, string | string[]> }): string | null {
+  if (to.name !== 'OrderDetails') return null
+  const raw = to.params.id
+  const idPart = Array.isArray(raw) ? raw[0] : raw
+  if (typeof idPart !== 'string' || !idPart.trim()) return null
+  return `Заказ №${idPart.trim()}`
+}
+
+router.afterEach((to) => {
+  const orderTitle = documentTitleForOrderDetailsRoute(to)
+  if (orderTitle !== null) {
+    document.title = orderTitle
+    return
+  }
+  document.title =
+    typeof to.meta.title === 'string' ? to.meta.title : DEFAULT_DOCUMENT_TITLE
 })
 
 function getStoredToken(): string | null {
