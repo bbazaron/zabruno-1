@@ -3,7 +3,8 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      # На сервере с локальным nginx на :80 задайте в .env в корне репозитория: NGINX_HTTP_PORT=8081
+      - "${NGINX_HTTP_PORT:-80}:80"
     volumes:
       - ./frontend:/var/www/frontend
       - ./backend:/var/www/backend
