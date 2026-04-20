@@ -35,7 +35,7 @@ class OrderService
         $productGender = $this->productGenderFromChildGender($validated['child_gender'] ?? null);
         $validated['total_amount'] = $this->calculateTotalAmount($items, $productGender);
 
-        $returnUrl = $this->yookassaReturnUrl();
+        $returnUrl = $this->yookassaReturnUrl($request);
 
         return DB::transaction(function () use ($validated, $items, $returnUrl) {
             /** @var Order $order */
@@ -129,14 +129,59 @@ class OrderService
         });
     }
 
-    private function yookassaReturnUrl(): string
+    private function yookassaReturnUrl(Request $request): string
     {
-        $base = config('services.yookassa.frontend_url');
-        if ($base === null || $base === '') {
+        $base = $this->frontendBaseUrlFromRequest($request);
+
+        if ($base === '') {
+            $base = rtrim((string) config('services.yookassa.frontend_url'), '/');
+        }
+
+        if ($base === '') {
             $base = rtrim((string) config('app.url'), '/');
         }
 
         return $base.'/orderCheckout?fromPayment=1';
+    }
+
+    private function frontendBaseUrlFromRequest(Request $request): string
+    {
+        $origin = trim((string) $request->headers->get('origin', ''));
+        $referer = trim((string) $request->headers->get('referer', ''));
+
+        $originUrl = $this->normalizeFrontendBaseUrl($origin);
+        if ($originUrl !== '') {
+            return $originUrl;
+        }
+
+        $refererUrl = $this->normalizeFrontendBaseUrl($referer);
+        if ($refererUrl !== '') {
+            return $refererUrl;
+        }
+
+        return '';
+    }
+
+    private function normalizeFrontendBaseUrl(string $raw): string
+    {
+        if ($raw === '') {
+            return '';
+        }
+
+        $parts = parse_url($raw);
+        if (! is_array($parts)) {
+            return '';
+        }
+
+        $scheme = $parts['scheme'] ?? null;
+        $host = $parts['host'] ?? null;
+        if (! is_string($scheme) || ! is_string($host) || $scheme === '' || $host === '') {
+            return '';
+        }
+
+        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+
+        return sprintf('%s://%s%s', $scheme, $host, $port);
     }
 
     /**
