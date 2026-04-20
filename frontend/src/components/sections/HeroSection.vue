@@ -166,7 +166,7 @@ const cards = [
               </h3>
               <div class="flex items-center justify-between relative">
                 <div
-                    v-for="(stepLabel, idx) in ['Ребёнок', 'Изделия', 'Размер', 'Выдача']"
+                    v-for="(stepLabel, idx) in ['Ребёнок', 'Размер', 'Изделия', 'Выдача']"
                     :key="idx"
                     class="relative flex-1 text-center"
                 >
@@ -177,15 +177,15 @@ const cards = [
                       <path d="M6.5 19v-1.5A3.5 3.5 0 0 1 10 14h4a3.5 3.5 0 0 1 3.5 3.5V19"/>
                     </svg>
                     <svg v-else-if="idx === 1" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-slate-900" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M8 7l1.8-2h4.4L16 7"/>
-                      <path d="M5 9h14l-1 10H6L5 9Z"/>
-                      <path d="M9 11v-1a3 3 0 0 1 6 0v1"/>
-                    </svg>
-                    <svg v-else-if="idx === 2" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-slate-900" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M4.5 8h11l-1 10h-9l-1-10Z"/>
                       <path d="M6.8 8l1.5-2h3.6l1.5 2"/>
                       <path d="M17 5v14"/>
                       <path d="M17 8h2M17 11h1.3M17 14h2M17 17h1.3"/>
+                    </svg>
+                    <svg v-else-if="idx === 2" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-slate-900" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M8 7l1.8-2h4.4L16 7"/>
+                      <path d="M5 9h14l-1 10H6L5 9Z"/>
+                      <path d="M9 11v-1a3 3 0 0 1 6 0v1"/>
                     </svg>
                     <svg v-else width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" class="text-slate-900" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M4.5 9h6l-.8 9h-4.4L4.5 9Z"/>

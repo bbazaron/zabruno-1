@@ -38,7 +38,20 @@ const login = async () => {
     router.push('/')
 
   } catch (err: any) {
-    showToast('Ошибка входа', 'error')
+    const status = err?.response?.status
+    const backendMessage = err?.response?.data?.message
+    const hasCredentialError =
+      status === 401 ||
+      status === 422 ||
+      (typeof backendMessage === 'string' &&
+        /неверный|invalid|unauthorized/i.test(backendMessage))
+
+    const message = hasCredentialError
+      ? 'Логин или пароль введены неверно'
+      : 'Не удалось выполнить вход. Попробуйте снова.'
+
+    error.value = message
+    showToast(message, 'error')
   }
 }
 </script>

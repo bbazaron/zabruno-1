@@ -104,7 +104,7 @@ const faqItems = computed<AccordionItem[]>(() => [
 </script>
 
 <template>
-  <div class="w-full font-sans text-slate-900">
+  <div class="w-full text-slate-900">
     <Header />
 
     <main class="min-h-screen">
@@ -119,13 +119,12 @@ const faqItems = computed<AccordionItem[]>(() => [
         </div>
       </section>
 
-      <!-- Hero (типографика как в HeroSection: Playfair + подзаголовок text-lg) -->
+      <!-- Hero -->
       <section class="relative bg-gradient-to-b from-neutral-50 to-white border-b border-neutral-200">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 md:py-20 lg:py-24">
           <div class="max-w-3xl mx-auto text-center space-y-6 md:space-y-8">
             <h1
-              class="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight text-slate-900 leading-[1.1]"
-              style="font-family: 'Playfair Display', serif"
+              class="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-slate-900 leading-[1.1]"
             >
               Как заказать школьную форму по индивидуальным меркам
             </h1>
@@ -150,8 +149,7 @@ const faqItems = computed<AccordionItem[]>(() => [
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="text-center max-w-2xl mx-auto mb-12 md:mb-16 space-y-3">
             <h2
-              class="text-2xl md:text-3xl font-light tracking-tight text-slate-900 leading-[1.1]"
-              style="font-family: 'Playfair Display', serif"
+              class="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.1]"
             >
               Как это работает
             </h2>
@@ -211,8 +209,7 @@ const faqItems = computed<AccordionItem[]>(() => [
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="max-w-2xl mx-auto text-center mb-10 md:mb-12 space-y-3">
             <h2
-              class="text-2xl md:text-3xl font-light tracking-tight text-slate-900 leading-[1.1]"
-              style="font-family: 'Playfair Display', serif"
+              class="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.1]"
             >
               Что происходит дальше
             </h2>
@@ -278,8 +275,7 @@ const faqItems = computed<AccordionItem[]>(() => [
               </div>
               <div class="space-y-4 text-center md:text-left">
                 <h2
-                  class="text-2xl md:text-3xl font-light tracking-tight text-slate-900 leading-[1.1]"
-                  style="font-family: 'Playfair Display', serif"
+                  class="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.1]"
                 >
                   Мы проверяем каждый заказ вручную
                 </h2>
@@ -304,8 +300,7 @@ const faqItems = computed<AccordionItem[]>(() => [
         <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="text-center mb-10 md:mb-12 space-y-3">
             <h2
-              class="text-2xl md:text-3xl font-light tracking-tight text-slate-900 leading-[1.1]"
-              style="font-family: 'Playfair Display', serif"
+              class="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.1]"
             >
               Частые вопросы
             </h2>
@@ -322,8 +317,7 @@ const faqItems = computed<AccordionItem[]>(() => [
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div class="max-w-xl mx-auto space-y-6 md:space-y-8">
             <h2
-              class="text-2xl md:text-3xl font-light tracking-tight text-slate-900 leading-[1.1]"
-              style="font-family: 'Playfair Display', serif"
+              class="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 leading-[1.1]"
             >
               Готовы оформить заказ?
             </h2>
