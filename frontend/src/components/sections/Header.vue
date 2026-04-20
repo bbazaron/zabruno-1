@@ -155,15 +155,15 @@ async function performLogout() {
 
 <template>
   <header class="sticky top-0 bg-white border-b border-neutral-200 z-50">
-    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+    <nav class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-4 flex items-center justify-between gap-2">
       <!-- Logo -->
-      <div class="flex items-center gap-2 cursor-pointer" @click="router.push('/')">
-        <div class="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+      <div class="flex min-w-0 items-center gap-2 cursor-pointer" @click="router.push('/')">
+        <div class="h-9 w-9 sm:w-10 sm:h-10 shrink-0 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold text-xs sm:text-sm">
           ШФ
         </div>
-        <div class="flex flex-col leading-tight">
-          <span class="text-sm font-semibold text-slate-900">ШКОЛЬНАЯ ФОРМА</span>
-          <span class="text-xs text-slate-600">СОБСТВЕННОЕ ПРОИЗВОДСТВО</span>
+        <div class="min-w-0 flex flex-col leading-tight">
+          <span class="truncate text-xs sm:text-sm font-semibold text-slate-900">ШКОЛЬНАЯ ФОРМА</span>
+          <span class="hidden min-[420px]:block truncate text-[10px] sm:text-xs text-slate-600">СОБСТВЕННОЕ ПРОИЗВОДСТВО</span>
         </div>
       </div>
 
@@ -180,14 +180,15 @@ async function performLogout() {
       </div>
 
       <!-- Right Actions -->
-      <div class="flex items-center gap-4">
+      <div class="flex shrink-0 items-center gap-2 sm:gap-4">
         <button
           v-if="!isLoggedIn"
           type="button"
           class="flex items-center gap-2 px-2 py-2 text-slate-600 hover:text-slate-900 cursor-pointer"
+          aria-label="Войти"
           @click="goToLogin"
         >
-          <span class="text-sm font-medium">Войти</span>
+          <span class="hidden sm:inline text-sm font-medium">Войти</span>
           <LogIn :size="20" class="shrink-0" aria-hidden="true" />
         </button>
         <button
@@ -195,9 +196,10 @@ async function performLogout() {
           type="button"
           class="flex items-center gap-2 px-2 py-2 text-slate-600 hover:text-slate-900 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           :disabled="logoutLoading"
+          aria-label="Выйти"
           @click="openLogoutConfirm"
         >
-          <span class="text-sm font-medium">Выйти</span>
+          <span class="hidden sm:inline text-sm font-medium">Выйти</span>
           <LogOut :size="20" class="shrink-0" aria-hidden="true" />
         </button>
         <Button
