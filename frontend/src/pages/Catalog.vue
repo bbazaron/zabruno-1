@@ -9,6 +9,7 @@ import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart, Filter } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import { useToast } from '../composables/useToast'
 
 type GenderFilter = 'all' | 'boys' | 'girls'
 
@@ -25,6 +26,23 @@ interface CatalogProduct {
   inStock?: boolean
 }
 
+interface BackendCatalogProduct {
+  id: number
+  name: string
+  description: string
+  image: string
+  gender: string
+  category: string
+  price: number
+  original_price?: number | null
+  in_stock?: boolean
+}
+
+interface CartStateItem {
+  itemId: number
+  quantity: number
+}
+
 function parseGenderQuery(q: unknown): GenderFilter {
   const s = String(q ?? '')
     .toLowerCase()
@@ -36,12 +54,25 @@ function parseGenderQuery(q: unknown): GenderFilter {
 
 const route = useRoute()
 const router = useRouter()
+const { showToast } = useToast()
 
 const selectedCategory = ref('all')
 const sortBy = ref('popular')
 const selectedGender = ref<GenderFilter>(parseGenderQuery(route.query.gender))
 
 const products = ref<CatalogProduct[]>([])
+const addingProductId = ref<number | null>(null)
+const cartByProductSizeKey = ref<Record<string, CartStateItem>>({})
+const selectedSizeByProductId = ref<Record<number, string>>({})
+const AVAILABLE_SIZES = ['XS', 'S', 'M', 'L', 'XL'] as const
+
+function productSizeKey(productId: number, size: string): string {
+  return `${productId}:${size}`
+}
+
+function getStoredToken(): string | null {
+  return localStorage.getItem('auth_token') || localStorage.getItem('token')
+}
 
 
 async function fetchProducts() {
@@ -53,9 +84,64 @@ async function fetchProducts() {
         sortBy: sortBy.value,
       }
     })
-    products.value = response.data
+    const rows: BackendCatalogProduct[] = Array.isArray(response.data) ? response.data : []
+    products.value = rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      image: row.image,
+      gender: row.gender,
+      category: row.category,
+      price: Number(row.price),
+      originalPrice: row.original_price == null ? undefined : Number(row.original_price),
+      sizes: [...AVAILABLE_SIZES],
+      inStock: Boolean(row.in_stock),
+    }))
+    selectedSizeByProductId.value = products.value.reduce<Record<number, string>>((acc, p) => {
+      acc[p.id] = selectedSizeByProductId.value[p.id] ?? 'M'
+      return acc
+    }, {})
+    void loadCartState()
   } catch (err) {
     console.error(err)
+  }
+}
+
+async function loadCartState() {
+  const token = getStoredToken()
+  if (!token) {
+    cartByProductSizeKey.value = {}
+    return
+  }
+
+  try {
+    const response = await axios.get('/api/cart', {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const rows = Array.isArray(response.data?.items) ? response.data.items : []
+    const nextState: Record<string, CartStateItem> = {}
+
+    for (const row of rows) {
+      const productId = Number(row?.product_id ?? row?.product?.id)
+      const itemId = Number(row?.id)
+      const quantity = Number(row?.quantity ?? 0)
+      const size = String(row?.selected_size ?? '').trim().toUpperCase()
+
+      if (productId > 0 && itemId > 0 && AVAILABLE_SIZES.includes(size as (typeof AVAILABLE_SIZES)[number])) {
+        nextState[productSizeKey(productId, size)] = {
+          itemId,
+          quantity: quantity > 0 ? quantity : 1,
+        }
+      }
+    }
+
+    cartByProductSizeKey.value = nextState
+  } catch {
+    // no-op
   }
 }
 
@@ -118,6 +204,64 @@ const filteredProducts = computed(() => {
 function resetFilters() {
   selectedCategory.value = 'all'
   selectedGender.value = 'all'
+}
+
+async function addToCart(product: CatalogProduct) {
+  const token = getStoredToken()
+  if (!token) {
+    router.push('/login')
+    return
+  }
+
+  const selectedSize = selectedSizeByProductId.value[product.id]
+  if (!selectedSize) {
+    showToast('Выберите размер', 'error')
+    return
+  }
+
+  addingProductId.value = product.id
+  try {
+    const response = await axios.post(
+      '/api/cart/add',
+      {
+        product_id: product.id,
+        quantity: 1,
+        selected_size: selectedSize,
+      },
+      {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+
+    const item = response.data?.item
+    const itemId = Number(item?.id)
+    const quantity = Number(item?.quantity ?? 1)
+    if (itemId > 0) {
+      cartByProductSizeKey.value = {
+        ...cartByProductSizeKey.value,
+        [productSizeKey(product.id, selectedSize)]: {
+          itemId,
+          quantity: quantity > 0 ? quantity : 1,
+        },
+      }
+    }
+
+    showToast('Товар добавлен в корзину', 'success')
+  } catch (err: any) {
+    const message = String(err?.response?.data?.message ?? '').trim()
+    showToast(message || 'Не удалось добавить в корзину', 'error')
+  } finally {
+    addingProductId.value = null
+  }
+}
+
+function cartQuantity(productId: number): number {
+  const selectedSize = selectedSizeByProductId.value[productId]
+  if (!selectedSize) return 0
+  return cartByProductSizeKey.value[productSizeKey(productId, selectedSize)]?.quantity ?? 0
 }
 
 </script>
@@ -262,7 +406,7 @@ function resetFilters() {
                 >
                 <Card
                   :key="product.id"
-                  class="group overflow-hidden flex flex-col hover:shadow-lg transition-shadow"
+                  class="group overflow-hidden flex flex-col h-[560px] hover:shadow-lg transition-shadow"
                 >
                   <!-- Product Image -->
                   <div class="relative overflow-hidden bg-neutral-100 h-64">
@@ -278,25 +422,32 @@ function resetFilters() {
                     <Typography as="h3" variant="h4" class="text-slate-900 mb-2 line-clamp-2">
                       {{ product.name }}
                     </Typography>
-                    <Typography as="p" variant="small" class="text-slate-600 mb-3 flex-1">
+                    <Typography as="p" variant="small" class="text-slate-600 mb-3 line-clamp-3 min-h-[60px]">
                       {{ product.description }}
                     </Typography>
 
                     <!-- Sizes -->
                     <div class="mb-4">
                       <div class="flex flex-wrap gap-1">
-                        <span
+                        <button
                           v-for="size in product.sizes"
                           :key="size"
-                          class="px-2 py-1 text-xs border border-slate-300 rounded text-slate-700"
+                          type="button"
+                          class="px-2 py-1 text-xs border rounded transition-colors"
+                          :class="
+                            selectedSizeByProductId[product.id] === size
+                              ? 'border-slate-900 bg-slate-900 text-white'
+                              : 'border-slate-300 text-slate-700 hover:bg-neutral-100'
+                          "
+                          @click.stop.prevent="selectedSizeByProductId[product.id] = size"
                         >
                           {{ size }}
-                        </span>
+                        </button>
                       </div>
                     </div>
 
                     <!-- Price & CTA -->
-                    <div class="border-t border-neutral-200 pt-4">
+                    <div class="border-t border-neutral-200 pt-4 mt-auto">
                       <div class="flex items-baseline gap-2 mb-4">
                         <span class="text-lg font-bold text-slate-900">{{ product.price }} ₽</span>
                         <span
@@ -307,14 +458,21 @@ function resetFilters() {
                         </span>
                       </div>
                       <Button
-                          @click.stop
-                        variant="primary"
+                        @click.stop.prevent="addToCart(product)"
+                        :variant="cartQuantity(product.id) > 0 ? 'outline' : 'primary'"
                         size="sm"
                         class="w-full gap-2"
-                        :disabled="!product.inStock"
+                        :class="
+                          cartQuantity(product.id) > 0
+                            ? '!bg-emerald-600 !text-white !border-emerald-600 hover:!bg-emerald-500'
+                            : ''
+                        "
+                        :disabled="!product.inStock || addingProductId === product.id"
                       >
                         <ShoppingCart :size="16" />
-                        <span>{{ product.inStock ? 'В корзину' : '' }}</span>
+                        <span v-if="!product.inStock">Нет в наличии</span>
+                        <span v-else-if="cartQuantity(product.id) > 0">Добавлен в корзину</span>
+                        <span v-else>В корзину</span>
                       </Button>
                     </div>
                   </div>

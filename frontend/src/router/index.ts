@@ -17,6 +17,8 @@ import Contacts from '../pages/Contacts.vue'
 import AboutUs from '../pages/AboutUs.vue'
 import AboutSize from '../pages/AboutSize.vue'
 import HowToOrder from '../pages/HowToOrder.vue'
+import Cart from '../pages/Cart.vue'
+import CartCheckout from '../pages/CartCheckout.vue'
 import axios from 'axios'
 
 const DEFAULT_DOCUMENT_TITLE = 'school-uniform-shop'
@@ -90,7 +92,25 @@ const routes = [
         path: '/orders',
         name: 'Orders',
         component: Orders,
-        meta: { title: 'Профиль пользователя' },
+        meta: { title: 'Мои заказы' },
+    },
+    {
+        path: '/cart',
+        name: 'Cart',
+        component: Cart,
+        meta: {
+            title: 'Корзина',
+            requiresAuth: true,
+        },
+    },
+    {
+        path: '/checkout/cart',
+        name: 'CartCheckout',
+        component: CartCheckout,
+        meta: {
+            title: 'Оформление заказа',
+            requiresAuth: true,
+        },
     },
     {
         path: '/orders/:id',
@@ -151,7 +171,7 @@ const router = createRouter({
 })
 
 function documentTitleForOrderDetailsRoute(to: { name: unknown; params: Record<string, string | string[]> }): string | null {
-  if (to.name !== 'OrderDetails') return null
+  if (to.name !== 'OrderDetails' && to.name !== 'AdminOrderDetails') return null
   const raw = to.params.id
   const idPart = Array.isArray(raw) ? raw[0] : raw
   if (typeof idPart !== 'string' || !idPart.trim()) return null

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import * as XLSX from 'xlsx-js-style'
 import Header from '../components/sections/Header.vue'
@@ -8,6 +8,7 @@ import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
+import { ChevronDown, X } from 'lucide-vue-next'
 
 interface AdminOrderItem {
   product_name: string
@@ -19,6 +20,7 @@ interface AdminOrder {
   id: number
   created_at: string
   status: string
+  order_type?: string | null
   total_amount?: string | number | null
   parent_full_name?: string
   parent_phone?: string
@@ -37,22 +39,37 @@ interface AdminOrder {
 }
 
 const router = useRouter()
+const route = useRoute()
 const { showToast } = useToast()
 
 const loading = ref(false)
 const orders = ref<AdminOrder[]>([])
+const pagination = ref({
+  current_page: 1,
+  last_page: 1,
+  per_page: 25,
+  total: 0,
+})
 
-/** Общий поиск: номер заказа, дата (как в таблице), ФИО, телефон, почта, ребёнок, школа */
+/** Общий поиск: номер заказа, ФИО, телефон, почта, ребёнок, школа */
 const searchQuery = ref('')
-/** Фильтр по дате создания: локальная дата `YYYY-MM-DD` сравнивается с датой заказа */
 const dateFrom = ref('')
 const dateTo = ref('')
-/** Сортировка по дате создания заказа */
 const sortByDate = ref<'new' | 'old'>('new')
+const statusFilter = ref<'all' | 'pending' | 'confirmed' | 'processing' | 'production' | 'completed' | 'cancelled'>('all')
+const showDateSortMenu = ref(false)
+const showStatusMenu = ref(false)
+
+function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'): boolean {
+  if (path === '/admin/orders') return route.path.startsWith('/admin/orders')
+  return route.path === path
+}
 
 function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
 }
+
+let reloadTimer: ReturnType<typeof setTimeout> | null = null
 
 function formatDate(date: string): string {
   const parsed = new Date(date)
@@ -72,103 +89,91 @@ function formatOrderTotal(raw: string | number | null | undefined): string {
   }).format(n)
 }
 
-/** Дата заказа в локальном календаре YYYY-MM-DD для сравнения с input type="date" */
-function orderLocalDateKey(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${day}-${m}-${y}`
-}
-
-function normalizeSearchInput(raw: string): string {
-  return raw.trim().toLowerCase().replace(/^#+\s*/, '')
-}
-
-function sortOrdersByDate(list: AdminOrder[]): AdminOrder[] {
-  const out = [...list]
-  out.sort((a, b) => {
-    const ta = new Date(a.created_at).getTime()
-    const tb = new Date(b.created_at).getTime()
-    if (Number.isNaN(ta) || Number.isNaN(tb)) return 0
-    return sortByDate.value === 'new' ? tb - ta : ta - tb
-  })
-  return out
-}
-
-const filteredOrders = computed(() => {
-  let list = orders.value
-
-  const from = dateFrom.value.trim()
-  const to = dateTo.value.trim()
-  if (from || to) {
-    list = list.filter((o) => {
-      const key = orderLocalDateKey(o.created_at)
-      if (!key) return false
-      if (from && key < from) return false
-      if (to && key > to) return false
-      return true
-    })
-  }
-
-  const q = normalizeSearchInput(searchQuery.value)
-  if (!q) {
-    return sortOrdersByDate(list)
-  }
-
-  const filtered = list.filter((o) => {
-    const idStr = String(o.id)
-    const isoDate = orderLocalDateKey(o.created_at)
-    const dateStr = formatDate(o.created_at).toLowerCase()
-    const parentName = (o.parent_full_name || o.user?.name || '').toLowerCase()
-    const phone = (o.parent_phone || '').replace(/\s/g, '')
-    const email = (o.parent_email || o.user?.email || '').toLowerCase()
-    const child = (o.child_full_name || '').toLowerCase()
-    const school = (o.school || '').toLowerCase()
-    const status = (o.status || '').toLowerCase()
-
-    const haystack = [
-      idStr,
-      `#${idStr}`,
-      isoDate,
-      dateStr,
-      parentName,
-      phone,
-      email,
-      child,
-      school,
-      status,
-    ].join(' ')
-
-    if (haystack.includes(q)) return true
-
-    const qDigits = q.replace(/\D/g, '')
-    if (qDigits.length >= 3 && phone.includes(qDigits)) return true
-
-    return false
-  })
-
-  return sortOrdersByDate(filtered)
-})
-
 function openOrder(orderId: number) {
   router.push(`/admin/orders/${orderId}`)
 }
 
 /** Подписи статусов для экспорта (как в кабинете / админке) */
 const STATUS_LABEL_RU: Record<string, string> = {
-  pending: 'В обработке',
+  pending: 'Ожидает',
   confirmed: 'Подтверждён',
   processing: 'В работе',
   production: 'В производстве',
-  completed: 'Завершён',
+  completed: 'Выполнен',
   cancelled: 'Отменён',
 }
 
 function statusLabelRu(status: string): string {
   const k = String(status).toLowerCase().replace(/\s+/g, '_')
   return STATUS_LABEL_RU[k] ?? status
+}
+
+function statusFilterLabel(): string {
+  if (statusFilter.value === 'all') return 'Все'
+  return statusLabelRu(statusFilter.value)
+}
+
+function setDateSort(next: 'new' | 'old') {
+  sortByDate.value = next
+  showDateSortMenu.value = false
+  pagination.value.current_page = 1
+  void loadAllOrders()
+}
+
+function setStatusFilter(next: typeof statusFilter.value) {
+  statusFilter.value = next
+  showStatusMenu.value = false
+  pagination.value.current_page = 1
+  void loadAllOrders()
+}
+
+function resetAllFilters() {
+  searchQuery.value = ''
+  dateFrom.value = ''
+  dateTo.value = ''
+  sortByDate.value = 'new'
+  statusFilter.value = 'all'
+  showDateSortMenu.value = false
+  showStatusMenu.value = false
+  pagination.value.current_page = 1
+  void loadAllOrders()
+}
+
+function handleGlobalClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (!target) return
+  if (target.closest('[data-admin-date-filter]') || target.closest('[data-admin-status-filter]')) {
+    return
+  }
+  showDateSortMenu.value = false
+  showStatusMenu.value = false
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    showDateSortMenu.value = false
+    showStatusMenu.value = false
+  }
+}
+
+function orderTypeLabel(orderType: string | null | undefined): string {
+  const v = String(orderType ?? '').toLowerCase()
+  if (v === 'ready_to_wear') return 'Готовая одежда'
+  return 'Пошив'
+}
+
+const STATUS_BADGE_CLASS: Record<string, string> = {
+  pending: 'bg-amber-50 text-amber-800 border-amber-200',
+  confirmed: 'bg-sky-50 text-sky-800 border-sky-200',
+  processing: 'bg-sky-50 text-sky-800 border-sky-200',
+  production: 'bg-sky-50 text-sky-800 border-sky-200',
+  completed: 'bg-violet-50 text-violet-800 border-violet-200',
+  cancelled: 'bg-neutral-100 text-neutral-700 border-neutral-200',
+}
+
+function statusBadgeClass(status: string): string {
+  const key = String(status).toLowerCase().replace(/\s+/g, '_')
+  return STATUS_BADGE_CLASS[key] ?? 'bg-neutral-100 text-neutral-800 border-neutral-200'
 }
 
 function orderTotalNumber(raw: string | number | null | undefined): number | '' {
@@ -248,8 +253,7 @@ function exportProductionXlsxFileName(): string {
 }
 
 /** Сводка по товарам и размерам для производства (.xlsx). Учитываются заказы из текущей выборки (фильтры даты и поиска). */
-function exportProductionToXlsx() {
-  const list = filteredOrders.value
+function exportProductionToXlsx(list: AdminOrder[]) {
   if (list.length === 0) {
     showToast('Нет заказов в текущей выборке', 'error')
     return
@@ -295,15 +299,13 @@ function applyOrdersExportSheetLayout(ws: XLSX.WorkSheet) {
 }
 
 /** Выгрузка всех загруженных заказов в Excel (.xlsx) через SheetJS. */
-function exportOrdersToXlsx() {
-  const list = orders.value
+function exportOrdersToXlsx(list: AdminOrder[]) {
   if (list.length === 0) {
     showToast('Нет заказов для экспорта', 'error')
     return
   }
 
-  const sorted = sortOrdersByDate([...list])
-  const rows = sorted.map((o) => ({
+  const rows = list.map((o) => ({
     '№ заказа': o.id,
     Дата: formatDate(o.created_at),
     Статус: statusLabelRu(o.status || ''),
@@ -324,6 +326,60 @@ function exportOrdersToXlsx() {
   showToast('Файл скачан', 'success')
 }
 
+async function fetchAllOrdersForExport(): Promise<AdminOrder[]> {
+  const token = getStoredToken()
+  if (!token) {
+    return []
+  }
+
+  const all: AdminOrder[] = []
+  let page = 1
+  let lastPage = 1
+  do {
+    const response = await axios.get('/api/admin/orders', {
+      params: {
+        page,
+        per_page: 100,
+        search: searchQuery.value.trim() || undefined,
+        date_from: dateFrom.value || undefined,
+        date_to: dateTo.value || undefined,
+        sort: sortByDate.value,
+        status: statusFilter.value,
+      },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const rows = Array.isArray(response.data?.orders) ? response.data.orders : []
+    all.push(...rows)
+    const p = response.data?.pagination
+    lastPage = Number(p?.last_page ?? page)
+    page += 1
+  } while (page <= lastPage)
+
+  return all
+}
+
+async function handleExportOrders() {
+  try {
+    const list = await fetchAllOrdersForExport()
+    exportOrdersToXlsx(list)
+  } catch {
+    showToast('Не удалось выгрузить заказы', 'error')
+  }
+}
+
+async function handleExportProduction() {
+  try {
+    const list = await fetchAllOrdersForExport()
+    exportProductionToXlsx(list)
+  } catch {
+    showToast('Не удалось выгрузить сводку', 'error')
+  }
+}
+
 async function loadAllOrders() {
   const token = getStoredToken()
   if (!token) {
@@ -334,6 +390,15 @@ async function loadAllOrders() {
   loading.value = true
   try {
     const response = await axios.get('/api/admin/orders', {
+      params: {
+        page: pagination.value.current_page,
+        per_page: pagination.value.per_page,
+        search: searchQuery.value.trim() || undefined,
+        date_from: dateFrom.value || undefined,
+        date_to: dateTo.value || undefined,
+        sort: sortByDate.value,
+        status: statusFilter.value,
+      },
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
@@ -341,6 +406,11 @@ async function loadAllOrders() {
     })
 
     orders.value = Array.isArray(response.data?.orders) ? response.data.orders : []
+    const p = response.data?.pagination ?? {}
+    pagination.value.current_page = Number(p.current_page ?? 1)
+    pagination.value.last_page = Number(p.last_page ?? 1)
+    pagination.value.per_page = Number(p.per_page ?? 25)
+    pagination.value.total = Number(p.total ?? orders.value.length)
   } catch (err: any) {
     if (err?.response?.status === 401) {
       router.push('/login')
@@ -356,25 +426,54 @@ async function loadAllOrders() {
   }
 }
 
+function goToPage(page: number) {
+  if (page < 1 || page > pagination.value.last_page) return
+  pagination.value.current_page = page
+  void loadAllOrders()
+}
+
+watch([searchQuery, dateFrom, dateTo], () => {
+  if (reloadTimer) clearTimeout(reloadTimer)
+  reloadTimer = setTimeout(() => {
+    pagination.value.current_page = 1
+    void loadAllOrders()
+  }, 350)
+})
+
 onMounted(() => {
   loadAllOrders()
+  document.addEventListener('click', handleGlobalClick)
+  document.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleGlobalClick)
+  document.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
 <template>
   <Header />
   <section class="relative w-full min-h-screen font-sans text-slate-900">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <Typography as="h1" class="text-3xl md:text-4xl font-light">Все заказы</Typography>
 
       <div class="mt-2 mb-8 flex flex-wrap gap-3">
-        <Button variant="secondary" size="sm" @click="router.push('/admin')">
+        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами
         </Button>
-        <Button variant="secondary" size="sm" @click="router.push('/admin/orders')">
+        <Button
+          :variant="isAdminTabActive('/admin/orders') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/orders')"
+        >
           Управление заказами
         </Button>
-        <Button variant="secondary" size="sm" @click="router.push('/admin/products')">
+        <Button
+          :variant="isAdminTabActive('/admin/products') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/products')"
+        >
           Управление товарами
         </Button>
       </div>
@@ -392,19 +491,8 @@ onMounted(() => {
                 v-model="searchQuery"
                 type="search"
                 placeholder="Например: 12 или #12 — номер заказа; или фамилия, email, телефон"
-                class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                class="search-input w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
               />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-slate-600 mb-1" for="sort-date">Порядок по дате</label>
-              <select
-                id="sort-date"
-                v-model="sortByDate"
-                class="w-full min-w-[180px] border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
-              >
-                <option value="new">Сначала новые</option>
-                <option value="old">Сначала старые</option>
-              </select>
             </div>
             <div>
               <label class="block text-xs font-medium text-slate-600 mb-1" for="date-from">Дата с</label>
@@ -412,7 +500,7 @@ onMounted(() => {
                 id="date-from"
                 v-model="dateFrom"
                 type="date"
-                class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer"
               />
             </div>
             <div>
@@ -421,15 +509,21 @@ onMounted(() => {
                 id="date-to"
                 v-model="dateTo"
                 type="date"
-                class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 cursor-pointer"
               />
+            </div>
+            <div class="flex items-end">
+              <Button variant="outline" size="sm" class="w-full sm:w-auto" @click="resetAllFilters">
+                <X :size="14" class="mr-1" />
+                Сбросить фильтры
+              </Button>
             </div>
             <div class="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
               <Button
                 variant="primary"
                 size="sm"
                 class="w-full sm:w-auto !border !border-[#185c37] !bg-[#217346] !text-white !shadow-sm hover:!bg-[#1a5c38] hover:!border-[#14532f] focus-visible:!ring-[#217346]/45"
-                @click="exportOrdersToXlsx"
+                @click="handleExportOrders"
               >
                 Экспорт всех заказов
               </Button>
@@ -437,54 +531,174 @@ onMounted(() => {
                 variant="primary"
                 size="sm"
                 class="w-full sm:w-auto !border !border-[#185c37] !bg-[#217346] !text-white !shadow-sm hover:!bg-[#1a5c38] hover:!border-[#14532f] focus-visible:!ring-[#217346]/45"
-                @click="exportProductionToXlsx"
+                @click="handleExportProduction"
               >
                 Экспорт для производства
               </Button>
             </div>
           </div>
 
-          <p v-if="filteredOrders.length === 0" class="text-slate-600 mb-4">Ничего не найдено по фильтрам</p>
+          <p v-if="orders.length === 0" class="text-slate-600 mb-4">Ничего не найдено по фильтрам</p>
 
-        <table v-else class="w-full text-left border-collapse">
-          <thead>
-            <tr class="border-b border-slate-300">
-              <th class="py-2 px-3">№</th>
-              <th class="py-2 px-3">Дата</th>
-              <th class="py-2 px-3">Статус</th>
-              <th class="py-2 px-3">Заказчик</th>
-              <th class="py-2 px-3">Телефон</th>
-              <th class="py-2 px-3">Email</th>
-              <th class="py-2 px-3">Город</th>
-              <th class="py-2 px-3">Сумма</th>
-              <th class="py-2 px-3">Школа</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="order in filteredOrders"
-              :key="order.id"
-              class="border-b border-slate-200 hover:bg-slate-50 cursor-pointer"
-              @click="openOrder(order.id)"
-            >
-              <td class="py-2 px-3">#{{ order.id }}</td>
-              <td class="py-2 px-3">{{ formatDate(order.created_at) }}</td>
-              <td class="py-2 px-3">{{ order.status }}</td>
-              <td class="py-2 px-3">{{ order.parent_full_name || order.user?.name || '-' }}</td>
-              <td class="py-2 px-3">{{ order.parent_phone || '-' }}</td>
-              <td class="py-2 px-3">{{ order.parent_email || order.user?.email || '-' }}</td>
-              <td class="py-2 px-3">{{ order.settlement || '-' }}</td>
-              <td class="py-2 px-3 whitespace-nowrap">{{ formatOrderTotal(order.total_amount) }}</td>
-              <td class="py-2 px-3 flex items-center justify-between gap-2">
-                <span>{{ order.school || '-' }}</span>
-                <Button size="sm" variant="primary" @click.stop="openOrder(order.id)">Открыть</Button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          <div v-else class="overflow-x-auto overflow-y-visible">
+            <table class="w-full min-w-[1100px] text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-300">
+                  <th class="py-2 px-3">№</th>
+                  <th class="py-2 px-3 relative" data-admin-date-filter>
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-slate-700 cursor-pointer"
+                      @click.stop="showDateSortMenu = !showDateSortMenu; showStatusMenu = false"
+                    >
+                      Дата
+                      <ChevronDown :size="16" :class="showDateSortMenu ? 'rotate-180' : ''" class="transition-transform" />
+                    </button>
+                    <div
+                      v-if="showDateSortMenu"
+                      class="absolute left-3 top-full z-20 mt-2 w-44 rounded-md border border-neutral-200 bg-white p-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="sortByDate === 'new' ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setDateSort('new')"
+                      >
+                        Сначала новые
+                      </button>
+                      <button
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="sortByDate === 'old' ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setDateSort('old')"
+                      >
+                        Сначала старые
+                      </button>
+                    </div>
+                  </th>
+                  <th class="py-2 px-3">Тип</th>
+                  <th class="py-2 px-3 relative" data-admin-status-filter>
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-slate-700 cursor-pointer"
+                      @click.stop="showStatusMenu = !showStatusMenu; showDateSortMenu = false"
+                    >
+                      Статус
+                      <ChevronDown :size="16" :class="showStatusMenu ? 'rotate-180' : ''" class="transition-transform" />
+                    </button>
+                    <div
+                      v-if="showStatusMenu"
+                      class="absolute left-3 top-full z-20 mt-2 w-52 rounded-md border border-neutral-200 bg-white p-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="statusFilter === 'all' ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setStatusFilter('all')"
+                      >
+                        Все
+                      </button>
+                      <button
+                        v-for="st in ['pending','confirmed','processing','production','completed','cancelled']"
+                        :key="st"
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="statusFilter === st ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setStatusFilter(st as any)"
+                      >
+                        {{ statusLabelRu(st) }}
+                      </button>
+                    </div>
+                    <span v-if="statusFilter !== 'all'" class="ml-2 text-xs text-slate-500">({{ statusFilterLabel() }})</span>
+                  </th>
+                  <th class="py-2 px-3">Заказчик</th>
+                  <th class="py-2 px-3">Телефон</th>
+                  <th class="py-2 px-3">Email</th>
+                  <th class="py-2 px-3">Город</th>
+                  <th class="py-2 px-3">Сумма</th>
+                  <th class="py-2 px-3">Школа</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="order in orders"
+                  :key="order.id"
+                  class="border-b border-slate-200 hover:bg-slate-50 cursor-pointer"
+                  @click="openOrder(order.id)"
+                >
+                  <td class="py-2 px-3 whitespace-nowrap">#{{ order.id }}</td>
+                  <td class="py-2 px-3 whitespace-nowrap">{{ formatDate(order.created_at) }}</td>
+                  <td class="py-2 px-3 whitespace-nowrap">{{ orderTypeLabel(order.order_type) }}</td>
+                  <td class="py-2 px-3 whitespace-nowrap">
+                    <span
+                      class="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                      :class="statusBadgeClass(order.status)"
+                    >
+                      {{ statusLabelRu(order.status) }}
+                    </span>
+                  </td>
+                  <td class="py-2 px-3">{{ order.parent_full_name || order.user?.name || '-' }}</td>
+                  <td class="py-2 px-3 whitespace-nowrap">{{ order.parent_phone || '-' }}</td>
+                  <td class="py-2 px-3">{{ order.parent_email || order.user?.email || '-' }}</td>
+                  <td class="py-2 px-3">{{ order.settlement || '-' }}</td>
+                  <td class="py-2 px-3 whitespace-nowrap">{{ formatOrderTotal(order.total_amount) }}</td>
+                  <td class="py-2 px-3">
+                    <div class="flex items-center justify-between gap-2 min-w-[170px]">
+                      <span>{{ order.school || '-' }}</span>
+                      <Button size="sm" variant="primary" @click.stop="openOrder(order.id)">Открыть</Button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div
+            v-if="pagination.last_page > 1"
+            class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600"
+          >
+            <span>
+              Страница {{ pagination.current_page }} из {{ pagination.last_page }} · Всего: {{ pagination.total }}
+            </span>
+            <div class="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="pagination.current_page <= 1"
+                @click="goToPage(pagination.current_page - 1)"
+              >
+                Назад
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                :disabled="pagination.current_page >= pagination.last_page"
+                @click="goToPage(pagination.current_page + 1)"
+              >
+                Вперёд
+              </Button>
+            </div>
+          </div>
         </template>
       </div>
     </div>
   </section>
   <Footer />
 </template>
+
+<style scoped>
+.search-input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+#sort-date,
+#sort-date option,
+#date-from,
+#date-to {
+  cursor: pointer;
+}
+
+#date-from::-webkit-calendar-picker-indicator,
+#date-to::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+</style>

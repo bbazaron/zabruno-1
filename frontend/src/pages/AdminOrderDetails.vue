@@ -21,6 +21,7 @@ interface OrderItem {
 interface OrderDetails {
   id: number
   status: string
+  order_type?: string
   created_at: string
   total_amount?: string | number | null
   child_full_name: string
@@ -97,6 +98,9 @@ const { loadProducts, resolveProductId, resolveProductImage, products } = usePro
 const loading = ref(false)
 const order = ref<AdminOrder | null>(null)
 const orderId = computed(() => Number(route.params.id))
+const isReadyToWearOrder = computed(
+  () => String(order.value?.order_type ?? '').toLowerCase() === 'ready_to_wear',
+)
 
 const editMode = ref(false)
 const draft = ref<OrderDraft | null>(null)
@@ -207,6 +211,12 @@ function childGenderLabel(g: string): string {
   if (v === 'boy' || v === 'boys') return 'мальчик'
   if (v === 'girl' || v === 'girls') return 'девочка'
   return g
+}
+
+function orderTypeLabel(orderType: string | null | undefined): string {
+  const v = String(orderType ?? '').toLowerCase()
+  if (v === 'ready_to_wear') return 'Готовая одежда'
+  return 'Пошив'
 }
 
 const STATUS_BADGE: Record<string, { label: string; class: string }> = {
@@ -566,6 +576,11 @@ onMounted(() => {
                 Заказ №{{ order.id }} от {{ formatDate(order.created_at) }}
               </p>
               <span
+                class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200"
+              >
+                {{ orderTypeLabel(order.order_type) }}
+              </span>
+              <span
                 class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium"
                 :class="statusBadge(order.status).class"
               >
@@ -739,8 +754,12 @@ onMounted(() => {
         </article>
 
         <!-- Данные ребёнка и заказчика -->
-        <div v-if="!editMode" class="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
-          <Card variant="outline" class="p-5 md:p-6 bg-white border-neutral-200">
+        <div
+          v-if="!editMode"
+          class="grid grid-cols-1 gap-5 md:gap-6"
+          :class="isReadyToWearOrder ? 'lg:grid-cols-1' : 'lg:grid-cols-2'"
+        >
+          <Card v-if="!isReadyToWearOrder" variant="outline" class="p-5 md:p-6 bg-white border-neutral-200">
             <h2 class="text-lg font-semibold tracking-tight text-slate-900 mb-4">Данные ребёнка</h2>
             <dl class="space-y-2 text-sm text-slate-700">
               <div class="flex flex-col sm:flex-row sm:gap-2">
@@ -841,8 +860,12 @@ onMounted(() => {
           </Card>
         </div>
 
-        <div v-else-if="draft" class="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
-          <Card variant="outline" class="p-5 md:p-6 bg-white border-neutral-200 space-y-4">
+        <div
+          v-else-if="draft"
+          class="grid grid-cols-1 gap-5 md:gap-6"
+          :class="isReadyToWearOrder ? 'lg:grid-cols-1' : 'lg:grid-cols-2'"
+        >
+          <Card v-if="!isReadyToWearOrder" variant="outline" class="p-5 md:p-6 bg-white border-neutral-200 space-y-4">
             <h2 class="text-lg font-semibold tracking-tight text-slate-900">Данные ребёнка</h2>
             <div>
               <label class="block text-xs text-slate-500 mb-1">ФИО</label>

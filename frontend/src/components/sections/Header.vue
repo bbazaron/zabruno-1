@@ -102,7 +102,7 @@ function goToOrders() {
     return
   }
 
-  router.push(canManageOrders() ? '/admin/orders' : '/orders')
+  router.push(canManageOrders() ? '/admin/orders' : '/cart')
   mobileMenuOpen.value = false
 }
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminProductController;
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\UserController;
@@ -19,6 +20,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/getUser', [UserController::class, 'getUser']);
     Route::put('/updateProfile', [UserController::class, 'updateProfile']);
     Route::get('/getOrders', [OrderController::class, 'getOrders']);
+    Route::post('/createCartOrder', [OrderController::class, 'createCartOrder']);
+    Route::get('/cart', [CartController::class, 'index']);
+    Route::post('/cart/add', [CartController::class, 'add']);
+    Route::patch('/cart/{itemId}', [CartController::class, 'update']);
+    Route::delete('/cart/{itemId}', [CartController::class, 'remove']);
 
     Route::middleware('role:admin,super_admin')->group(function () {
         Route::get('/admin/admins', [UserController::class, 'getAdmins']);

@@ -5,7 +5,7 @@ import Typography from '../components/ui/Typography.vue'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import axios from 'axios'
-import { useRouter, RouterLink } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useToast } from '../composables/useToast'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
 import {
@@ -41,8 +41,13 @@ function getStoredToken(): string | null {
 }
 
 const router = useRouter()
+const route = useRoute()
 const { showToast } = useToast()
 const { loadProducts, resolveProductId, resolveProductImage, products } = useProductLinkResolver()
+
+function isUserTabActive(path: '/orders' | '/cart'): boolean {
+  return route.path === path
+}
 
 function productHref(productName: string, orderGender?: string | null): string | null {
   void products.value.length
@@ -268,10 +273,6 @@ function goToProfile() {
   router.push('/profile')
 }
 
-function goToOrderCheckout() {
-  router.push({ name: 'OrderCheckout' })
-}
-
 onMounted(() => {
   loadUser()
   loadOrders()
@@ -287,7 +288,7 @@ onMounted(() => {
       <div class="text-sm text-slate-600">
         <RouterLink to="/" class="hover:text-slate-900 transition-colors">Главная</RouterLink>
         <span class="mx-2">/</span>
-        <span class="text-slate-900 font-medium">Профиль пользователя</span>
+        <span class="text-slate-900 font-medium">Мои заказы</span>
       </div>
 
       <div
@@ -317,9 +318,25 @@ onMounted(() => {
             {{ userName }}<span v-if="userMail" class="text-slate-600"> · {{ userMail }}</span>
           </Typography>
         </div>
-        <Button variant="secondary" size="md" class="shrink-0 self-start" @click="goToProfile">
-          Редактировать профиль
-        </Button>
+        <div class="flex flex-wrap gap-3 self-start">
+          <Button
+            :variant="isUserTabActive('/cart') ? 'primary' : 'secondary'"
+            size="sm"
+            @click="router.push('/cart')"
+          >
+            Корзина
+          </Button>
+          <Button
+            :variant="isUserTabActive('/orders') ? 'primary' : 'secondary'"
+            size="sm"
+            @click="router.push('/orders')"
+          >
+            Мои заказы
+          </Button>
+          <Button variant="secondary" size="sm" @click="goToProfile">
+            Редактировать профиль
+          </Button>
+        </div>
       </div>
     </div>
   </section>
@@ -403,9 +420,13 @@ onMounted(() => {
             class="flex items-start justify-between gap-3 px-4 py-4 md:px-5 md:py-5 border-b border-neutral-100"
           >
             <div class="flex flex-wrap items-center gap-2 min-w-0">
-              <p class="font-semibold text-slate-900 text-sm md:text-base leading-snug">
+              <button
+                type="button"
+                class="font-semibold text-slate-900 text-sm md:text-base leading-snug hover:text-slate-700 hover:underline underline-offset-2 cursor-pointer"
+                @click="openOrder(order.id)"
+              >
                 Заказ №{{ order.id }} от {{ formatDate(order.created_at) }}
-              </p>
+              </button>
               <span
                 class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium"
                 :class="statusBadge(order.status).class"
@@ -535,9 +556,6 @@ onMounted(() => {
             class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-4 py-4 md:px-5 md:py-4 border-t border-neutral-100 bg-neutral-50/60"
           >
             <div class="flex gap-2 shrink-0">
-              <Button variant="outline" size="sm" @click.stop="goToOrderCheckout">
-                Повторить
-              </Button>
               <Button variant="primary" size="sm" @click.stop="openOrder(order.id)">
                 Подробнее
               </Button>

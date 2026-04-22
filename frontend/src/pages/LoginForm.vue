@@ -16,6 +16,7 @@ const email = ref('')
 const password = ref('')
 const showPassword = ref(false)
 const error = ref('')
+const loading = ref(false)
 
 const goToRegister = () => {
   router.push('/signUpForm')
@@ -24,6 +25,7 @@ const goToRegister = () => {
 // Отправка формы
 const login = async () => {
   error.value = ''
+  loading.value = true
   try {
     const response = await axios.post('/api/login', {
       email: email.value,
@@ -52,6 +54,8 @@ const login = async () => {
 
     error.value = message
     showToast(message, 'error')
+  } finally {
+    loading.value = false
   }
 }
 </script>
@@ -137,8 +141,18 @@ const login = async () => {
           </div>
         </div>
 
-        <Button type="submit" variant="primary" class="w-full mt-2">
-          Войти
+        <Button type="submit" variant="primary" class="w-full mt-2 gap-2" :disabled="loading">
+          <svg
+            v-if="loading"
+            class="h-4 w-4 animate-spin"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+          <span>{{ loading ? 'Вход...' : 'Войти' }}</span>
         </Button>
       </form>
 

@@ -45,6 +45,7 @@ import Typography from '../components/ui/Typography.vue'
           </Typography>
         </div>
       </section>
+
     </main>
 
     <Footer />

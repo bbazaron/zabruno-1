@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import axios from 'axios'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
@@ -28,6 +28,12 @@ const formPassword = ref('')
 const formRole = ref<'admin' | 'super_admin'>('admin')
 const currentRole = ref<string>('user')
 const router = useRouter()
+const route = useRoute()
+
+function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'): boolean {
+  if (path === '/admin/orders') return route.path.startsWith('/admin/orders')
+  return route.path === path
+}
 
 function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
@@ -113,13 +119,21 @@ onMounted(() => {
     <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <Typography as="h1" class="text-3xl md:text-4xl font-light">Админ панель</Typography>
       <div class="mt-2 mb-8 flex flex-wrap gap-3">
-        <Button variant="secondary" size="sm" @click="router.push('/admin')">
+        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами
         </Button>
-        <Button variant="secondary" size="sm" @click="router.push('/admin/orders')">
+        <Button
+          :variant="isAdminTabActive('/admin/orders') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/orders')"
+        >
           Управление заказами
         </Button>
-        <Button variant="secondary" size="sm" @click="router.push('/admin/products')">
+        <Button
+          :variant="isAdminTabActive('/admin/products') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/products')"
+        >
           Управление товарами
         </Button>
       </div>

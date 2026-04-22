@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
@@ -26,6 +26,7 @@ interface AdminProduct {
 }
 
 const router = useRouter()
+const route = useRoute()
 const { showToast } = useToast()
 
 const products = ref<AdminProduct[]>([])
@@ -49,8 +50,13 @@ const categories = [
   { id: 'vests', label: 'Жилеты' },
   { id: 'skirts', label: 'Юбки' },
   { id: 'pants', label: 'Брюки' },
-  { id: 'Комплекты', label: 'Комплекты' },
+  { id: 'sets', label: 'Комплекты' },
 ]
+
+const categoryLabelById = Object.fromEntries(categories.map((category) => [category.id, category.label])) as Record<
+  string,
+  string
+>
 
 const inputClass =
   'w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900'
@@ -117,6 +123,15 @@ function formatApiError(err: unknown): string {
   if (typeof data.message === 'string') return data.message
   if (data.errors) return Object.values(data.errors).flat().join(' ')
   return 'Ошибка запроса'
+}
+
+function getCategoryLabel(categoryId: string): string {
+  return categoryLabelById[categoryId] ?? categoryId
+}
+
+function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'): boolean {
+  if (path === '/admin/orders') return route.path.startsWith('/admin/orders')
+  return route.path === path
 }
 
 async function loadProducts() {
@@ -206,13 +221,21 @@ onMounted(() => {
       <Typography as="h1" class="text-3xl md:text-4xl font-light">Управление товарами</Typography>
 
       <div class="mt-2 mb-8 flex flex-wrap gap-3">
-        <Button variant="secondary" size="sm" @click="router.push('/admin')">
+        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами
         </Button>
-        <Button variant="secondary" size="sm" @click="router.push('/admin/orders')">
+        <Button
+          :variant="isAdminTabActive('/admin/orders') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/orders')"
+        >
           Управление заказами
         </Button>
-        <Button variant="secondary" size="sm" @click="router.push('/admin/products')">
+        <Button
+          :variant="isAdminTabActive('/admin/products') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/products')"
+        >
           Управление товарами
         </Button>
       </div>
@@ -330,18 +353,21 @@ onMounted(() => {
               <tr v-for="p in products" :key="p.id" class="border-b border-slate-100">
                 <td class="py-2 px-3 align-middle tabular-nums">{{ p.id }}</td>
                 <td class="py-2 px-3 align-middle">
-                  <img
-                    v-if="p.image"
-                    :src="resolveBackendMediaUrl(p.image)"
-                    alt=""
-                    class="h-10 w-10 rounded object-cover border border-neutral-200"
-                  />
+                  <router-link v-if="p.image" :to="`/product/${p.id}`" class="inline-block">
+                    <img
+                      :src="resolveBackendMediaUrl(p.image)"
+                      alt=""
+                      class="h-10 w-10 rounded object-cover border border-neutral-200"
+                    />
+                  </router-link>
                   <span v-else class="text-slate-400 text-xs">—</span>
                 </td>
                 <td class="py-2 px-3 align-middle max-w-[200px]">
-                  <span class="line-clamp-2">{{ p.name }}</span>
+                  <router-link :to="`/product/${p.id}`" class="line-clamp-2 text-slate-900 hover:underline">
+                    {{ p.name }}
+                  </router-link>
                 </td>
-                <td class="py-2 px-3 align-middle">{{ p.category }}</td>
+                <td class="py-2 px-3 align-middle">{{ getCategoryLabel(p.category) }}</td>
                 <td class="py-2 px-3 align-middle">{{ p.gender === 'boys' ? 'Мальчики' : 'Девочки' }}</td>
                 <td class="py-2 px-3 align-middle tabular-nums">{{ p.price }} ₽</td>
                 <td class="py-2 px-3 align-middle">{{ p.in_stock ? 'Да' : 'Нет' }}</td>

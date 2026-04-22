@@ -22,6 +22,7 @@ interface OrderItem {
 interface OrderDetails {
   id: number
   status: string
+  order_type?: string
   created_at: string
   total_amount?: string | number | null
   child_full_name: string
@@ -72,6 +73,9 @@ const itemImageByLineId = computed(() => {
 
 const loading = ref(false)
 const order = ref<OrderDetails | null>(null)
+const isReadyToWearOrder = computed(
+  () => String(order.value?.order_type ?? '').toLowerCase() === 'ready_to_wear',
+)
 
 const orderId = computed(() => Number(route.params.id))
 
@@ -152,10 +156,6 @@ function statusBadge(status: string): { label: string; class: string } {
       class: 'bg-neutral-100 text-neutral-800 border-neutral-200',
     }
   )
-}
-
-function goToOrderCheckout() {
-  router.push({ name: 'OrderCheckout' })
 }
 
 async function loadOrderDetails() {
@@ -375,13 +375,8 @@ onMounted(() => {
           </div>
 
           <div
-            class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-4 py-4 md:px-5 md:py-4 border-t border-neutral-100 bg-neutral-50/60"
+            class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-4 px-4 py-4 md:px-5 md:py-4 border-t border-neutral-100 bg-neutral-50/60"
           >
-            <div class="flex gap-2 shrink-0">
-              <Button variant="outline" size="sm" @click="goToOrderCheckout">
-                Повторить
-              </Button>
-            </div>
             <p class="text-base md:text-lg font-bold text-slate-900 tabular-nums text-right">
               Итого: {{ formatOrderTotal(order.total_amount) }}
             </p>
@@ -389,8 +384,11 @@ onMounted(() => {
         </article>
 
         <!-- Данные ребёнка и заказчика -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
-          <Card variant="outline" class="p-5 md:p-6 bg-white border-neutral-200">
+        <div
+          class="grid grid-cols-1 gap-5 md:gap-6"
+          :class="isReadyToWearOrder ? 'lg:grid-cols-1' : 'lg:grid-cols-2'"
+        >
+          <Card v-if="!isReadyToWearOrder" variant="outline" class="p-5 md:p-6 bg-white border-neutral-200">
             <h2 class="text-lg font-semibold tracking-tight text-slate-900 mb-4">
               Данные ребёнка
             </h2>

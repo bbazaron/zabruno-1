@@ -38,33 +38,49 @@ const mapOpenUrl = 'https://www.openstreetmap.org/?mlat=52.034&mlon=113.499#map=
       <section class="bg-neutral-50 py-8">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 items-start">
-            <!-- Левая колонка: контакты -->
-            <div class="rounded-lg border border-neutral-200 bg-white p-6 md:p-8 space-y-6">
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
-                <a
-                  :href="`tel:${phoneTel}`"
-                  class="inline-block text-2xl md:text-3xl font-semibold tracking-tight text-slate-900 hover:text-slate-700 underline-offset-4 hover:underline"
-                >
-                  {{ phoneDisplay }}
-                </a>
+            <!-- Левая колонка: контакты и реквизиты -->
+            <div class="space-y-6">
+              <div class="rounded-lg border border-neutral-200 bg-white p-6 md:p-8 space-y-6">
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">Телефон</label>
+                  <a
+                    :href="`tel:${phoneTel}`"
+                    class="inline-block text-2xl md:text-3xl font-semibold tracking-tight text-slate-900 hover:text-slate-700 underline-offset-4 hover:underline"
+                  >
+                    {{ phoneDisplay }}
+                  </a>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">Электронная почта</label>
+                  <a
+                    :href="`mailto:${email}`"
+                    class="text-base md:text-lg leading-relaxed text-slate-900 break-all hover:text-slate-700 underline-offset-2 hover:underline"
+                  >
+                    {{ email }}
+                  </a>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
+                  <Typography as="p" variant="body" class="text-slate-900">
+                    {{ address }}
+                  </Typography>
+                </div>
               </div>
 
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Электронная почта</label>
-                <a
-                  :href="`mailto:${email}`"
-                  class="text-base md:text-lg leading-relaxed text-slate-900 break-all hover:text-slate-700 underline-offset-2 hover:underline"
-                >
-                  {{ email }}
-                </a>
-              </div>
-
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Адрес</label>
-                <Typography as="p" variant="body" class="text-slate-900">
-                  {{ address }}
+              <div class="rounded-lg border border-neutral-200 bg-white p-6 md:p-8">
+                <Typography as="h2" variant="h4" class="text-slate-900 mb-4">
+                  Реквизиты
                 </Typography>
+                <div class="space-y-2 text-slate-700">
+                  <Typography as="p" variant="body">
+                    <span class="font-medium text-slate-900">ИНН:</span>
+                  </Typography>
+                  <Typography as="p" variant="body">
+                    <span class="font-medium text-slate-900">ОГРНИП:</span>
+                  </Typography>
+                </div>
               </div>
             </div>
 
@@ -95,6 +111,7 @@ const mapOpenUrl = 'https://www.openstreetmap.org/?mlat=52.034&mlon=113.499#map=
           </div>
         </div>
       </section>
+
     </main>
 
     <Footer />

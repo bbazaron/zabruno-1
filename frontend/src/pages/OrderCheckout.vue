@@ -28,6 +28,7 @@ const returnedFromPayment = ref(false)
 
 /** Есть токен — бэкенд подставит email учётной записи, если поле пустое */
 const isAuthenticated = ref(false)
+const accountEmail = ref('')
 
 onMounted(() => {
   const q = route.query.fromPayment
@@ -37,6 +38,9 @@ onMounted(() => {
   }
   const t = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('token')
   isAuthenticated.value = Boolean(t && String(t).trim())
+  if (isAuthenticated.value) {
+    void loadAccountEmail()
+  }
 })
 
 const stepLabels = [
@@ -267,7 +271,7 @@ function isRuPhoneComplete(phone: string): boolean {
   return d.length === 11 && d.startsWith('7')
 }
 
-/** 10 цифр после 7; незаполненные позиции — «0» (шаблон +7-000-000-00-00) */
+/** 10 цифр после 7; незаполненные позиции — «_» (шаблон +7-___-___-__-__) */
 function digitsAfterSeven(phone: string): string {
   const d = phone.replace(/\D/g, '')
   if (d.length <= 1) return ''
@@ -278,7 +282,7 @@ function formatParentPhoneMask(phone: string): string {
   const d7 = digitsAfterSeven(phone)
   const chars: string[] = []
   for (let i = 0; i < 10; i++) {
-    chars[i] = i < d7.length ? d7[i]! : '0'
+    chars[i] = i < d7.length ? d7[i]! : '_'
   }
   const g1 = chars.slice(0, 3).join('')
   const g2 = chars.slice(3, 6).join('')
@@ -292,14 +296,26 @@ function setParentPhoneFromDigitsAfter7(after7: string) {
   parentPhone.value = only.length === 0 ? '+7' : `+7${only}`
 }
 
-function focusPhoneInputEnd(el: HTMLInputElement) {
+const PHONE_EDITABLE_POSITIONS = [3, 4, 5, 7, 8, 9, 11, 12, 14, 15] as const
+
+function displayPosToDigitIndex(pos: number): number {
+  return PHONE_EDITABLE_POSITIONS.filter((p) => p < pos).length
+}
+
+function digitIndexToDisplayPos(idx: number): number {
+  if (idx <= 0) return PHONE_EDITABLE_POSITIONS[0]
+  if (idx >= 10) return formatParentPhoneMask(parentPhone.value).length
+  return PHONE_EDITABLE_POSITIONS[idx] ?? formatParentPhoneMask(parentPhone.value).length
+}
+
+function setPhoneCaretByDigitIndex(el: HTMLInputElement, idx: number) {
   nextTick(() => {
-    const pos = formatParentPhoneMask(parentPhone.value).length
+    const pos = digitIndexToDisplayPos(idx)
     el.setSelectionRange(pos, pos)
   })
 }
 
-/** Ввод только с начала номера; нули маски не попадают в буфер (не парсим value целиком) */
+/** Ввод только с начала номера; символы маски не попадают в буфер (не парсим value целиком) */
 function onParentPhoneBeforeInput(e: Event) {
   const be = e as InputEvent
   if (be.isComposing) return
@@ -309,32 +325,39 @@ function onParentPhoneBeforeInput(e: Event) {
     be.preventDefault()
     const start = el.selectionStart ?? 0
     const end = el.selectionEnd ?? 0
-    const displayLen = formatParentPhoneMask(parentPhone.value).length
     const d = digitsAfterSeven(parentPhone.value)
     const typed = be.data.replace(/\D/g, '')
-    let nextDigits: string
-    if (end > start && end - start === displayLen && displayLen > 0) {
-      nextDigits = typed.slice(0, 10)
-    } else {
-      nextDigits = (d + typed).slice(0, 10)
-    }
+    const from = displayPosToDigitIndex(start)
+    const to = displayPosToDigitIndex(end)
+    const nextDigits = (d.slice(0, from) + typed + d.slice(to)).slice(0, 10)
     setParentPhoneFromDigitsAfter7(nextDigits)
-    focusPhoneInputEnd(el)
+    setPhoneCaretByDigitIndex(el, Math.min(from + typed.length, 10))
     return
   }
 
-  if (be.inputType === 'deleteContentBackward') {
+  if (be.inputType === 'deleteContentBackward' || be.inputType === 'deleteContentForward') {
     be.preventDefault()
     const start = el.selectionStart ?? 0
     const end = el.selectionEnd ?? 0
-    const displayLen = formatParentPhoneMask(parentPhone.value).length
-    if (end > start && end - start === displayLen && displayLen > 0) {
-      setParentPhoneFromDigitsAfter7('')
-    } else {
-      const d = digitsAfterSeven(parentPhone.value)
-      setParentPhoneFromDigitsAfter7(d.slice(0, -1))
+    const d = digitsAfterSeven(parentPhone.value)
+    let from = displayPosToDigitIndex(start)
+    let to = displayPosToDigitIndex(end)
+
+    if (start === end) {
+      if (be.inputType === 'deleteContentBackward') {
+        from = Math.max(0, from - 1)
+      } else {
+        to = Math.min(10, to + 1)
+      }
     }
-    focusPhoneInputEnd(el)
+
+    if (from === to) {
+      setPhoneCaretByDigitIndex(el, from)
+    } else {
+      const nextDigits = d.slice(0, from) + d.slice(to)
+      setParentPhoneFromDigitsAfter7(nextDigits)
+      setPhoneCaretByDigitIndex(el, from)
+    }
   }
 }
 
@@ -343,7 +366,7 @@ function onParentPhonePaste(e: ClipboardEvent) {
   const text = e.clipboardData?.getData('text/plain') ?? ''
   parentPhone.value = normalizeRuPhoneInput(text)
   const el = e.target as HTMLInputElement
-  focusPhoneInputEnd(el)
+  setPhoneCaretByDigitIndex(el, 10)
 }
 
 // Шаг 4
@@ -503,6 +526,27 @@ function getAuthHeaders(): Record<string, string> {
     headers.Authorization = `Bearer ${token}`
   }
   return headers
+}
+
+async function loadAccountEmail() {
+  try {
+    const { data } = await axios.get<{
+      email?: string | null
+      mail?: string | null
+      user?: { email?: string | null; mail?: string | null } | null
+    }>('/api/getUser', {
+      headers: getAuthHeaders(),
+    })
+    const resolved =
+      data?.email ??
+      data?.mail ??
+      data?.user?.email ??
+      data?.user?.mail ??
+      ''
+    accountEmail.value = typeof resolved === 'string' ? resolved.trim() : ''
+  } catch {
+    accountEmail.value = ''
+  }
 }
 
 function buildOrderPayload() {
@@ -687,9 +731,8 @@ async function submitOrder() {
 function emailForSummary(): string {
   const em = parentEmail.value.trim()
   if (em) return em
-  if (isAuthenticated.value) {
-    return 'как в учётной записи (подставится при отправке заказа)'
-  }
+  if (isAuthenticated.value && accountEmail.value) return accountEmail.value
+  if (isAuthenticated.value) return 'как в учётной записи (подставится при отправке заказа)'
   return '—'
 }
 

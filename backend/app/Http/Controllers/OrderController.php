@@ -45,6 +45,30 @@ class OrderController extends Controller
         ]);
     }
 
+    public function createCartOrder(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'parent_full_name' => ['required', 'string', 'max:255'],
+            'parent_phone' => ['required', 'string', 'max:32'],
+            'parent_email' => ['nullable', 'email', 'max:255'],
+            'comment' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        try {
+            $result = $this->orderService->createCartOrder($request, $validated);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Заказ из корзины создан',
+            'order' => $result['order'],
+            'confirmation_url' => $result['confirmation_url'],
+        ], 201);
+    }
+
     public function getOrders(\Illuminate\Http\Request $request): JsonResponse
     {
         if ($request->user() === null) {
@@ -60,12 +84,18 @@ class OrderController extends Controller
         ]);
     }
 
-    public function getAllOrders(): JsonResponse
+    public function getAllOrders(Request $request): JsonResponse
     {
-        $orders = $this->orderService->getAllOrders();
+        $orders = $this->orderService->getAllOrdersPaginated($request);
 
         return response()->json([
-            'orders' => $orders,
+            'orders' => $orders->items(),
+            'pagination' => [
+                'current_page' => $orders->currentPage(),
+                'last_page' => $orders->lastPage(),
+                'per_page' => $orders->perPage(),
+                'total' => $orders->total(),
+            ],
         ]);
     }
 
