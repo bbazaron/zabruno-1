@@ -126,10 +126,10 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-function pickupLabel(o: OrderDetails): string {
-  const parts = [o.settlement, o.school].filter(Boolean) as string[]
-  if (parts.length === 0) return '—'
-  return parts.join(', ')
+const PICKUP_ADDRESS = 'пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16'
+
+function pickupLabel(_o: OrderDetails): string {
+  return PICKUP_ADDRESS
 }
 
 function childGenderLabel(g: string): string {

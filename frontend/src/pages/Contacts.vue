@@ -3,15 +3,15 @@ import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import Typography from '../components/ui/Typography.vue'
 
-const phoneDisplay = '+7 (302) XXX-XX-XX'
-const phoneTel = '+73020000000'
-const email = 'info@shkola-forma.ru'
-const address = 'Чита, Забайкальский край'
+const phoneDisplay = '+7 (996) 830-71-36'
+const phoneTel = '+7 (996) 830-71-36'
+const email = 'erjena.erjena@mail.ru'
+const address = 'Забайкальский край, пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16'
 
 /** Карта OpenStreetMap*/
-const mapEmbedUrl =
-  'https://www.openstreetmap.org/export/embed.html?bbox=113.45%2C52.01%2C113.55%2C52.06&layer=mapnik&marker=52.034%2C113.499'
-const mapOpenUrl = 'https://www.openstreetmap.org/?mlat=52.034&mlon=113.499#map=14/52.034/113.499'
+const mapQuery = encodeURIComponent(address)
+const mapEmbedUrl = `https://www.google.com/maps?q=${mapQuery}&output=embed`
+const mapOpenUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`
 </script>
 
 <template>
@@ -75,10 +75,10 @@ const mapOpenUrl = 'https://www.openstreetmap.org/?mlat=52.034&mlon=113.499#map=
                 </Typography>
                 <div class="space-y-2 text-slate-700">
                   <Typography as="p" variant="body">
-                    <span class="font-medium text-slate-900">ИНН:</span>
+                    <span class="font-medium text-slate-900">ИНН: 800101362802</span>
                   </Typography>
                   <Typography as="p" variant="body">
-                    <span class="font-medium text-slate-900">ОГРНИП:</span>
+                    <span class="font-medium text-slate-900">ОГРНИП: 316753600058958</span>
                   </Typography>
                 </div>
               </div>
@@ -90,7 +90,7 @@ const mapOpenUrl = 'https://www.openstreetmap.org/?mlat=52.034&mlon=113.499#map=
                 class="relative w-full min-h-[280px] aspect-[4/3] lg:aspect-auto lg:min-h-[500px] lg:h-[500px]"
               >
                 <iframe
-                  title="Карта: адрес в Чите"
+                  title="Карта: "
                   class="absolute inset-0 h-full w-full border-0"
                   loading="lazy"
                   referrerpolicy="no-referrer-when-downgrade"

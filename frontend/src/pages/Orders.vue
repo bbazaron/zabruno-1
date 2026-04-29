@@ -240,10 +240,10 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-function pickupLabel(order: BackendOrder): string {
-  const parts = [order.settlement, order.school].filter(Boolean) as string[]
-  if (parts.length === 0) return '—'
-  return parts.join(', ')
+const PICKUP_ADDRESS = 'пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16'
+
+function pickupLabel(_order: BackendOrder): string {
+  return PICKUP_ADDRESS
 }
 
 const STATUS_BADGE: Record<string, { label: string; class: string }> = {

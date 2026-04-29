@@ -1519,6 +1519,14 @@ const summaryLines = computed(() => {
             >
               После оформления заказа менеджер свяжется с вами для уточнения деталей.
             </Typography>
+            <Typography
+              as="p"
+              variant="body"
+              class="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-slate-700 leading-relaxed"
+            >
+              Получение заказа по адресу: пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16
+
+            </Typography>
             <div
               v-if="submitError"
               class="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"

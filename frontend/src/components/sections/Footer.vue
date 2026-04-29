@@ -14,24 +14,20 @@
           <ul class="space-y-2 text-sm text-gray-300">
             <li><a href="#" class="hover:text-white">Как заказать</a></li>
             <li><a href="/sizes" class="hover:text-white">О размере</a></li>
-            <li><a href="#" class="hover:text-white">Доставка</a></li>
-            <li><a href="#" class="hover:text-white">Возврат</a></li>
           </ul>
         </div>
         <div>
           <h3 class="font-semibold mb-4">Социальные сети</h3>
           <ul class="space-y-2 text-sm text-gray-300">
-            <li><a href="#" class="hover:text-white">ВКонтакте</a></li>
-            <li><a href="#" class="hover:text-white">Инстаграм</a></li>
-            <li><a href="#" class="hover:text-white">Телеграм</a></li>
+            <li><a href="https://max.ru/id800101362802_biz" class="hover:text-white">MAX</a></li>
           </ul>
         </div>
         <div>
           <h3 class="font-semibold mb-4">Контакты</h3>
           <p class="text-sm text-gray-300">
-            Чита, Забайкальский край<br>
-            +7 (302) XXX-XX-XX<br>
-            info@shkola-forma.ru
+            Забайкальский край, пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16<br>
+            +7 (996) 830-71-36<br>
+            erjena.erjena@mail.ru
           </p>
         </div>
       </div>

@@ -57,8 +57,10 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const sortByDate = ref<'new' | 'old'>('new')
 const statusFilter = ref<'all' | 'pending' | 'confirmed' | 'processing' | 'production' | 'completed' | 'cancelled'>('all')
+const orderTypeFilter = ref<'all' | 'custom_tailoring' | 'ready_to_wear'>('all')
 const showDateSortMenu = ref(false)
 const showStatusMenu = ref(false)
+const showOrderTypeMenu = ref(false)
 
 function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'): boolean {
   if (path === '/admin/orders') return route.path.startsWith('/admin/orders')
@@ -127,14 +129,23 @@ function setStatusFilter(next: typeof statusFilter.value) {
   void loadAllOrders()
 }
 
+function setOrderTypeFilter(next: typeof orderTypeFilter.value) {
+  orderTypeFilter.value = next
+  showOrderTypeMenu.value = false
+  pagination.value.current_page = 1
+  void loadAllOrders()
+}
+
 function resetAllFilters() {
   searchQuery.value = ''
   dateFrom.value = ''
   dateTo.value = ''
   sortByDate.value = 'new'
   statusFilter.value = 'all'
+  orderTypeFilter.value = 'all'
   showDateSortMenu.value = false
   showStatusMenu.value = false
+  showOrderTypeMenu.value = false
   pagination.value.current_page = 1
   void loadAllOrders()
 }
@@ -142,17 +153,23 @@ function resetAllFilters() {
 function handleGlobalClick(event: MouseEvent) {
   const target = event.target as HTMLElement | null
   if (!target) return
-  if (target.closest('[data-admin-date-filter]') || target.closest('[data-admin-status-filter]')) {
+  if (
+    target.closest('[data-admin-date-filter]') ||
+    target.closest('[data-admin-status-filter]') ||
+    target.closest('[data-admin-order-type-filter]')
+  ) {
     return
   }
   showDateSortMenu.value = false
   showStatusMenu.value = false
+  showOrderTypeMenu.value = false
 }
 
 function handleGlobalKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     showDateSortMenu.value = false
     showStatusMenu.value = false
+    showOrderTypeMenu.value = false
   }
 }
 
@@ -160,6 +177,17 @@ function orderTypeLabel(orderType: string | null | undefined): string {
   const v = String(orderType ?? '').toLowerCase()
   if (v === 'ready_to_wear') return 'Готовая одежда'
   return 'Пошив'
+}
+
+function orderTypeFilterLabel(): string {
+  if (orderTypeFilter.value === 'all') return 'Все'
+  if (orderTypeFilter.value === 'ready_to_wear') return 'Готовая одежда'
+  return 'Пошив'
+}
+
+function orderTypeFilterApiValue(): string | undefined {
+  if (orderTypeFilter.value === 'all') return undefined
+  return orderTypeFilter.value
 }
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
@@ -345,6 +373,7 @@ async function fetchAllOrdersForExport(): Promise<AdminOrder[]> {
         date_to: dateTo.value || undefined,
         sort: sortByDate.value,
         status: statusFilter.value,
+        order_type: orderTypeFilterApiValue(),
       },
       headers: {
         Accept: 'application/json',
@@ -398,6 +427,7 @@ async function loadAllOrders() {
         date_to: dateTo.value || undefined,
         sort: sortByDate.value,
         status: statusFilter.value,
+        order_type: orderTypeFilterApiValue(),
       },
       headers: {
         Accept: 'application/json',
@@ -576,12 +606,51 @@ onBeforeUnmount(() => {
                       </button>
                     </div>
                   </th>
-                  <th class="py-2 px-3">Тип</th>
+                  <th class="py-2 px-3 relative" data-admin-order-type-filter>
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-slate-700 cursor-pointer"
+                      @click.stop="showOrderTypeMenu = !showOrderTypeMenu; showDateSortMenu = false; showStatusMenu = false"
+                    >
+                      Тип
+                      <ChevronDown :size="16" :class="showOrderTypeMenu ? 'rotate-180' : ''" class="transition-transform" />
+                    </button>
+                    <div
+                      v-if="showOrderTypeMenu"
+                      class="absolute left-3 top-full z-20 mt-2 w-52 rounded-md border border-neutral-200 bg-white p-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="orderTypeFilter === 'all' ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setOrderTypeFilter('all')"
+                      >
+                        Все
+                      </button>
+                      <button
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="orderTypeFilter === 'custom_tailoring' ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setOrderTypeFilter('custom_tailoring')"
+                      >
+                        Пошив
+                      </button>
+                      <button
+                        type="button"
+                        class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"
+                        :class="orderTypeFilter === 'ready_to_wear' ? 'bg-neutral-100 text-slate-900 font-medium' : 'text-slate-700'"
+                        @click.stop="setOrderTypeFilter('ready_to_wear')"
+                      >
+                        Готовая одежда
+                      </button>
+                    </div>
+                    <span v-if="orderTypeFilter !== 'all'" class="ml-2 text-xs text-slate-500">({{ orderTypeFilterLabel() }})</span>
+                  </th>
                   <th class="py-2 px-3 relative" data-admin-status-filter>
                     <button
                       type="button"
                       class="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-slate-700 cursor-pointer"
-                      @click.stop="showStatusMenu = !showStatusMenu; showDateSortMenu = false"
+                      @click.stop="showStatusMenu = !showStatusMenu; showDateSortMenu = false; showOrderTypeMenu = false"
                     >
                       Статус
                       <ChevronDown :size="16" :class="showStatusMenu ? 'rotate-180' : ''" class="transition-transform" />

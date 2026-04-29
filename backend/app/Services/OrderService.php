@@ -444,6 +444,7 @@ class OrderService
     {
         $search = trim((string) $request->query('search', ''));
         $status = trim((string) $request->query('status', 'all'));
+        $orderType = trim((string) $request->query('order_type', 'all'));
         $dateFrom = trim((string) $request->query('date_from', ''));
         $dateTo = trim((string) $request->query('date_to', ''));
         $sort = trim((string) $request->query('sort', 'new'));
@@ -461,6 +462,10 @@ class OrderService
 
         if ($status !== '' && $status !== 'all') {
             $query->where('status', $status);
+        }
+
+        if ($orderType !== '' && $orderType !== 'all') {
+            $query->where('order_type', $orderType);
         }
 
         if ($dateFrom !== '') {
