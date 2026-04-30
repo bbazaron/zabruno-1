@@ -19,6 +19,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      '/storage': {
+        target: 'http://127.0.0.1:80',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 })

@@ -13,6 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class OrderService
@@ -39,9 +41,13 @@ class OrderService
         $validated['total_amount'] = $this->calculateTotalAmount($items, $productGender);
 
         $returnUrl = $this->yookassaReturnUrl($request);
+        $amount = round((float) $validated['total_amount'], 2);
+        if ($amount > 0) {
+            $validated['status'] = 'pending_payment';
+        }
 
-        return DB::transaction(function () use ($validated, $items, $returnUrl) {
-            /** @var Order $order */
+        /** @var Order $order */
+        $order = DB::transaction(function () use ($validated, $items) {
             $order = Order::create($validated);
 
             foreach ($items as $index => $row) {
@@ -54,40 +60,24 @@ class OrderService
                 ]);
             }
 
-            $order->load('items');
-
-            $amount = (float) $order->total_amount;
-            $confirmationUrl = null;
-
-            if ($amount > 0) {
-                if (! $this->yooKassa->isConfigured()) {
-                    throw new \RuntimeException('ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
-                }
-
-                $amountFormatted = number_format($amount, 2, '.', '');
-                $payment = $this->yooKassa->createRedirectPayment(
-                    $amountFormatted,
-                    'Заказ №'.$order->id,
-                    $returnUrl,
-                    ['order_id' => (string) $order->id],
-                );
-
-                $order->update([
-                    'yookassa_payment_id' => $payment['id'],
-                    'yookassa_payment_status' => $payment['status'],
-                ]);
-
-                $order = $order->fresh('items');
-                $confirmationUrl = $payment['confirmation_url'];
-            }
-
-            $this->scheduleOrderReceivedEmail($order);
-
-            return [
-                'order' => $order,
-                'confirmation_url' => $confirmationUrl,
-            ];
+            return $order;
         });
+
+        $order->load('items');
+        $confirmationUrl = null;
+
+        if ($amount > 0) {
+            $paymentData = $this->createPaymentForOrder($order, $returnUrl);
+            $order = $paymentData['order'];
+            $confirmationUrl = $paymentData['confirmation_url'];
+        }
+
+        $this->scheduleOrderReceivedEmail($order);
+
+        return [
+            'order' => $order,
+            'confirmation_url' => $confirmationUrl,
+        ];
     }
 
     /**
@@ -145,7 +135,7 @@ class OrderService
         $payload = [
             'user_id' => $userId,
             'order_type' => 'ready_to_wear',
-            'status' => 'pending',
+            'status' => $total > 0 ? 'pending_payment' : 'pending',
             'child_full_name' => 'Готовая одежда',
             'child_gender' => 'boy',
             'settlement' => 'Не указано',
@@ -174,8 +164,8 @@ class OrderService
 
         $returnUrl = $this->yookassaReturnUrl($request);
 
-        return DB::transaction(function () use ($payload, $lines, $cartItems, $returnUrl) {
-            /** @var Order $order */
+        /** @var Order $order */
+        $order = DB::transaction(function () use ($payload, $lines) {
             $order = Order::create($payload);
 
             foreach ($lines as $index => $line) {
@@ -188,43 +178,77 @@ class OrderService
                 ]);
             }
 
-            $order->load('items');
-            $amount = (float) $order->total_amount;
-            $confirmationUrl = null;
-
-            if ($amount > 0) {
-                if (! $this->yooKassa->isConfigured()) {
-                    throw new \RuntimeException('ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
-                }
-
-                $amountFormatted = number_format($amount, 2, '.', '');
-                $payment = $this->yooKassa->createRedirectPayment(
-                    $amountFormatted,
-                    'Заказ №'.$order->id,
-                    $returnUrl,
-                    ['order_id' => (string) $order->id],
-                );
-
-                $order->update([
-                    'yookassa_payment_id' => $payment['id'],
-                    'yookassa_payment_status' => $payment['status'],
-                ]);
-
-                $order = $order->fresh('items');
-                $confirmationUrl = $payment['confirmation_url'];
-            }
-
-            UserProduct::query()
-                ->whereIn('id', $cartItems->pluck('id')->all())
-                ->delete();
-
-            $this->scheduleOrderReceivedEmail($order);
-
-            return [
-                'order' => $order,
-                'confirmation_url' => $confirmationUrl,
-            ];
+            return $order;
         });
+
+        $order->load('items');
+        $amount = (float) $order->total_amount;
+        $confirmationUrl = null;
+
+        if ($amount > 0) {
+            $paymentData = $this->createPaymentForOrder($order, $returnUrl);
+            $order = $paymentData['order'];
+            $confirmationUrl = $paymentData['confirmation_url'];
+        }
+
+        UserProduct::query()
+            ->whereIn('id', $cartItems->pluck('id')->all())
+            ->delete();
+
+        $this->scheduleOrderReceivedEmail($order);
+
+        return [
+            'order' => $order,
+            'confirmation_url' => $confirmationUrl,
+        ];
+    }
+
+    /**
+     * @return array{order: Order, confirmation_url: string}
+     */
+    private function createPaymentForOrder(Order $order, string $returnUrl): array
+    {
+        if (! $this->yooKassa->isConfigured()) {
+            throw new \RuntimeException('ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
+        }
+
+        $amountFormatted = number_format((float) $order->total_amount, 2, '.', '');
+        $idempotenceKey = $this->canUseYookassaIdempotenceKeyColumn() && $order->yookassa_idempotence_key
+            ? $order->yookassa_idempotence_key
+            : sprintf('order:%d:payment:v1', $order->id);
+
+        if ($this->canUseYookassaIdempotenceKeyColumn() && $order->yookassa_idempotence_key !== $idempotenceKey) {
+            $order->update(['yookassa_idempotence_key' => $idempotenceKey]);
+        }
+
+        $payment = $this->yooKassa->createRedirectPayment(
+            $amountFormatted,
+            'Заказ №'.$order->id,
+            $returnUrl,
+            ['order_id' => (string) $order->id],
+            $idempotenceKey,
+        );
+
+        $order->update([
+            'yookassa_payment_id' => $payment['id'],
+            'yookassa_payment_status' => $payment['status'],
+        ]);
+
+        return [
+            'order' => $order->fresh('items'),
+            'confirmation_url' => $payment['confirmation_url'],
+        ];
+    }
+
+    private function canUseYookassaIdempotenceKeyColumn(): bool
+    {
+        static $hasColumn;
+
+        if ($hasColumn === null) {
+            $hasColumn = Schema::hasColumn('orders', 'yookassa_idempotence_key');
+        }
+
+        return $hasColumn;
     }
 
     private function scheduleOrderReceivedEmail(Order $order): void
@@ -433,11 +457,54 @@ class OrderService
             return new EloquentCollection();
         }
 
-        return Order::query()
+        $orders = Order::query()
             ->with('items')
             ->where('user_id', $userId)
             ->latest()
             ->get();
+
+        $this->attachLinePricingToOrders($orders);
+
+        return $orders;
+    }
+
+    /**
+     * Возвращает статус последнего заказа с платежом для экрана возврата из YooKassa.
+     *
+     * @return array{order_id:int,payment_id:string,status:string,label:string}|null
+     */
+    public function latestPaymentStatus(Request $request): ?array
+    {
+        $userId = $this->resolveUserId($request);
+        if ($userId === null) {
+            return null;
+        }
+
+        $order = Order::query()
+            ->where('user_id', $userId)
+            ->whereNotNull('yookassa_payment_id')
+            ->latest()
+            ->first();
+        if ($order === null) {
+            return null;
+        }
+
+        return [
+            'order_id' => (int) $order->id,
+            'payment_id' => (string) $order->yookassa_payment_id,
+            'status' => (string) $order->status,
+            'label' => $this->humanOrderStatus((string) $order->status),
+        ];
+    }
+
+    private function humanOrderStatus(string $status): string
+    {
+        return match ($status) {
+            'confirmed' => 'Оплачен',
+            'pending_payment' => 'Ожидает подтверждения',
+            'payment_cancelled', 'cancelled' => 'Отменен',
+            default => 'Не найден',
+        };
     }
 
     public function getAllOrdersPaginated(Request $request): LengthAwarePaginator
@@ -491,7 +558,10 @@ class OrderService
 
         $query->orderBy('created_at', $sort === 'old' ? 'asc' : 'desc');
 
-        return $query->paginate($perPage, ['*'], 'page', $page);
+        $orders = $query->paginate($perPage, ['*'], 'page', $page);
+        $this->attachLinePricingToOrders($orders->getCollection());
+
+        return $orders;
     }
 
     /**
@@ -509,9 +579,79 @@ class OrderService
 
     public function getAdminOrderById(int $orderId): ?Order
     {
-        return Order::query()
+        $order = Order::query()
             ->with(['items', 'user'])
             ->find($orderId);
+
+        if ($order !== null) {
+            $this->attachLinePricingToOrders(new EloquentCollection([$order]));
+        }
+
+        return $order;
+    }
+
+    /**
+     * Добавляет к order_items поля unit_price/line_total для корректного отображения сумм на фронте.
+     *
+     * @param  EloquentCollection<int, Order>  $orders
+     */
+    private function attachLinePricingToOrders(EloquentCollection $orders): void
+    {
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $names = $orders
+            ->flatMap(fn (Order $order) => $order->items->pluck('product_name'))
+            ->map(fn (mixed $name) => trim((string) $name))
+            ->filter(fn (string $name) => $name !== '')
+            ->unique()
+            ->values();
+
+        if ($names->isEmpty()) {
+            return;
+        }
+
+        /** @var Collection<string, \Illuminate\Support\Collection<int, Product>> $productsByName */
+        $productsByName = Product::query()
+            ->whereIn('name', $names->all())
+            ->get()
+            ->groupBy('name');
+
+        foreach ($orders as $order) {
+            $productGender = $this->productGenderFromChildGender($order->child_gender);
+
+            foreach ($order->items as $item) {
+                $name = trim((string) $item->product_name);
+                $qty = max(1, (int) $item->quantity);
+                $unitPrice = null;
+
+                $candidates = $productsByName->get($name);
+                if ($candidates instanceof Collection && $candidates->isNotEmpty()) {
+                    $match = null;
+                    if ($productGender !== null) {
+                        $match = $candidates->first(fn (Product $p) => $p->gender === $productGender);
+                    }
+                    if (! $match) {
+                        $match = $candidates->first();
+                    }
+
+                    if ($match instanceof Product) {
+                        $unitPrice = (float) $match->price;
+                    }
+                }
+
+                if ($unitPrice === null) {
+                    $item->setAttribute('unit_price', null);
+                    $item->setAttribute('line_total', null);
+                    continue;
+                }
+
+                $lineTotal = $unitPrice * $qty;
+                $item->setAttribute('unit_price', number_format($unitPrice, 2, '.', ''));
+                $item->setAttribute('line_total', number_format($lineTotal, 2, '.', ''));
+            }
+        }
     }
 
     public function updateAdminOrderStatus(int $orderId, string $status): ?Order

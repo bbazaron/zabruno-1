@@ -16,6 +16,8 @@ interface OrderItem {
   quantity: number
   size_override?: string | null
   line_comment?: string | null
+  unit_price?: string | number | null
+  line_total?: string | number | null
 }
 
 interface OrderDetails {
@@ -118,8 +120,15 @@ const ORDER_STATUSES = [
 const selectedStatus = ref<string>('pending')
 const savingStatus = ref(false)
 
+function normalizeStatusForSelect(status: string | null | undefined): string {
+  const key = String(status ?? '').toLowerCase().replace(/\s+/g, '_')
+  if (key === 'pending_payment') return 'pending'
+  if (key === 'payment_cancelled') return 'cancelled'
+  return key
+}
+
 const statusOptions = computed(() => {
-  const s = order.value?.status
+  const s = normalizeStatusForSelect(order.value?.status)
   const base = ORDER_STATUSES.map((o) => ({ value: o.value, label: o.label }))
   if (!s || base.some((o) => o.value === s)) {
     return base
@@ -184,15 +193,11 @@ function formatMoney(n: number): string {
   }).format(n)
 }
 
-function lineAmount(o: OrderDetails, quantity: number): string | null {
-  const raw = o.total_amount
-  if (raw === null || raw === undefined || raw === '') return null
-  const total = typeof raw === 'number' ? raw : parseFloat(String(raw))
-  if (!Number.isFinite(total) || total <= 0) return null
-  const items = o.items ?? []
-  const sumQty = items.reduce((s, i) => s + i.quantity, 0)
-  if (sumQty <= 0) return null
-  return formatMoney((total * quantity) / sumQty)
+function lineAmount(lineTotal: string | number | null | undefined): string | null {
+  if (lineTotal === null || lineTotal === undefined || lineTotal === '') return null
+  const n = typeof lineTotal === 'number' ? lineTotal : parseFloat(String(lineTotal))
+  if (!Number.isFinite(n)) return null
+  return formatMoney(n)
 }
 
 function formatPhoneDisplay(phone: string | undefined): string {
@@ -221,11 +226,13 @@ function orderTypeLabel(orderType: string | null | undefined): string {
 
 const STATUS_BADGE: Record<string, { label: string; class: string }> = {
   pending: { label: 'В обработке', class: 'bg-amber-50 text-amber-800 border-amber-200' },
+  pending_payment: { label: 'Ожидает', class: 'bg-amber-50 text-amber-800 border-amber-200' },
   confirmed: { label: 'Подтверждён', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   processing: { label: 'В работе', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   production: { label: 'В производстве', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   completed: { label: 'Завершён', class: 'bg-violet-50 text-violet-800 border-violet-200' },
   cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
+  payment_cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
 }
 
 function statusBadge(status: string): { label: string; class: string } {
@@ -373,7 +380,7 @@ async function loadOrder() {
     const o = response.data?.order ?? null
     order.value = o
     if (o?.status) {
-      selectedStatus.value = o.status
+      selectedStatus.value = normalizeStatusForSelect(o.status)
     }
   } catch (err: any) {
     if (err?.response?.status === 401) {
@@ -413,7 +420,7 @@ async function saveStatus() {
     )
     order.value = response.data?.order ?? order.value
     if (order.value?.status) {
-      selectedStatus.value = order.value.status
+      selectedStatus.value = normalizeStatusForSelect(order.value.status)
     }
     showToast('Статус сохранён', 'success')
   } catch {
@@ -445,7 +452,7 @@ async function saveOrderDraft() {
     editMode.value = false
     draft.value = null
     if (order.value?.status) {
-      selectedStatus.value = order.value.status
+      selectedStatus.value = normalizeStatusForSelect(order.value.status)
     }
     showToast('Данные заказа сохранены', 'success')
   } catch (err: any) {
@@ -485,16 +492,16 @@ onMounted(() => {
       </div>
 
       <div
-        class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8 mt-4 md:mt-5"
+        class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-start sm:gap-8 mt-4 md:mt-5"
       >
+        <Button variant="secondary" size="md" class="shrink-0 self-start" @click="router.push('/admin/orders')">
+          К списку заказов
+        </Button>
         <div class="min-w-0 flex-1">
           <h1 class="text-3xl md:text-4xl font-bold leading-tight text-slate-900">
             Заказ №{{ orderId }}
           </h1>
         </div>
-        <Button variant="secondary" size="md" class="shrink-0 self-start" @click="router.push('/admin/orders')">
-          К списку заказов
-        </Button>
       </div>
     </div>
   </section>
@@ -665,10 +672,10 @@ onMounted(() => {
                   </p>
                 </div>
                 <div class="text-left sm:text-right shrink-0 sm:pl-4">
-                  <p v-if="lineAmount(order, item.quantity)" class="text-sm text-slate-700">
+                  <p v-if="lineAmount(item.line_total)" class="text-sm text-slate-700">
                     <span class="text-slate-500">Сумма:</span>
                     <span class="font-semibold text-slate-900 tabular-nums">
-                      {{ lineAmount(order, item.quantity) }}
+                      {{ lineAmount(item.line_total) }}
                     </span>
                   </p>
                   <p class="text-xs md:text-sm text-slate-500 mt-1 tabular-nums">{{ item.quantity }} шт.</p>

@@ -6,7 +6,7 @@ import Footer from '../components/sections/Footer.vue'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
-import { ShoppingCart, Filter } from 'lucide-vue-next'
+import { ShoppingCart, Filter, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 import { useToast } from '../composables/useToast'
@@ -18,6 +18,7 @@ interface CatalogProduct {
   name: string
   description: string
   image: string
+  media: string[]
   gender: string
   category: string
   price: number
@@ -31,6 +32,7 @@ interface BackendCatalogProduct {
   name: string
   description: string
   image: string
+  media?: string[]
   gender: string
   category: string
   price: number
@@ -64,6 +66,7 @@ const products = ref<CatalogProduct[]>([])
 const addingProductId = ref<number | null>(null)
 const cartByProductSizeKey = ref<Record<string, CartStateItem>>({})
 const selectedSizeByProductId = ref<Record<number, string>>({})
+const currentMediaIndexByProductId = ref<Record<number, number>>({})
 const AVAILABLE_SIZES = ['XS', 'S', 'M', 'L', 'XL'] as const
 
 function productSizeKey(productId: number, size: string): string {
@@ -85,20 +88,30 @@ async function fetchProducts() {
       }
     })
     const rows: BackendCatalogProduct[] = Array.isArray(response.data) ? response.data : []
-    products.value = rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      image: row.image,
-      gender: row.gender,
-      category: row.category,
-      price: Number(row.price),
-      originalPrice: row.original_price == null ? undefined : Number(row.original_price),
-      sizes: [...AVAILABLE_SIZES],
-      inStock: Boolean(row.in_stock),
-    }))
+    products.value = rows.map((row) => {
+      const media = Array.isArray(row.media) ? row.media : []
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        image: row.image,
+        media: media.length > 0 ? media : row.image ? [row.image] : [],
+        gender: row.gender,
+        category: row.category,
+        price: Number(row.price),
+        originalPrice: row.original_price == null ? undefined : Number(row.original_price),
+        sizes: [...AVAILABLE_SIZES],
+        inStock: Boolean(row.in_stock),
+      }
+    })
     selectedSizeByProductId.value = products.value.reduce<Record<number, string>>((acc, p) => {
       acc[p.id] = selectedSizeByProductId.value[p.id] ?? 'M'
+      return acc
+    }, {})
+    currentMediaIndexByProductId.value = products.value.reduce<Record<number, number>>((acc, p) => {
+      const prev = currentMediaIndexByProductId.value[p.id] ?? 0
+      const maxIndex = Math.max(0, p.media.length - 1)
+      acc[p.id] = Math.min(prev, maxIndex)
       return acc
     }, {})
     void loadCartState()
@@ -258,10 +271,42 @@ async function addToCart(product: CatalogProduct) {
   }
 }
 
+function handleCartButtonClick(product: CatalogProduct) {
+  if (cartQuantity(product.id) > 0) {
+    void router.push('/cart')
+    return
+  }
+  void addToCart(product)
+}
+
 function cartQuantity(productId: number): number {
   const selectedSize = selectedSizeByProductId.value[productId]
   if (!selectedSize) return 0
   return cartByProductSizeKey.value[productSizeKey(productId, selectedSize)]?.quantity ?? 0
+}
+
+function resolvedMedia(product: CatalogProduct): string[] {
+  return product.media.map((m) => resolveBackendMediaUrl(m)).filter(Boolean)
+}
+
+function currentMediaIndex(product: CatalogProduct): number {
+  const maxIndex = Math.max(0, resolvedMedia(product).length - 1)
+  return Math.min(currentMediaIndexByProductId.value[product.id] ?? 0, maxIndex)
+}
+
+function slideOffsetStyle(product: CatalogProduct): string {
+  return `translateX(-${currentMediaIndex(product) * 100}%)`
+}
+
+function changeProductMedia(product: CatalogProduct, step: number) {
+  const media = resolvedMedia(product)
+  if (media.length <= 1) return
+  const current = currentMediaIndex(product)
+  const next = (current + step + media.length) % media.length
+  currentMediaIndexByProductId.value = {
+    ...currentMediaIndexByProductId.value,
+    [product.id]: next,
+  }
 }
 
 </script>
@@ -410,11 +455,40 @@ function cartQuantity(productId: number): number {
                 >
                   <!-- Product Image -->
                   <div class="relative overflow-hidden bg-neutral-100 h-64">
-                    <img
-                      :src="resolveBackendMediaUrl(product.image)"
-                      :alt="product.name"
-                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    <div
+                      class="flex h-full transition-transform duration-500 ease-out"
+                      :style="{ transform: slideOffsetStyle(product) }"
+                    >
+                      <div
+                        v-for="(mediaUrl, mediaIdx) in resolvedMedia(product)"
+                        :key="`${product.id}-${mediaIdx}-${mediaUrl}`"
+                        class="h-full w-full min-w-full overflow-hidden"
+                      >
+                        <img
+                          :src="mediaUrl"
+                          :alt="product.name"
+                          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      v-if="resolvedMedia(product).length > 1"
+                      type="button"
+                      class="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/45 text-white text-xl leading-none hover:bg-black/65"
+                      @click.stop.prevent="changeProductMedia(product, -1)"
+                      aria-label="Предыдущее изображение"
+                    >
+                      <ChevronLeft :size="18" />
+                    </button>
+                    <button
+                      v-if="resolvedMedia(product).length > 1"
+                      type="button"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-black/45 text-white text-xl leading-none hover:bg-black/65"
+                      @click.stop.prevent="changeProductMedia(product, 1)"
+                      aria-label="Следующее изображение"
+                    >
+                      <ChevronRight :size="18" />
+                    </button>
                   </div>
 
                   <!-- Product Info -->
@@ -458,7 +532,7 @@ function cartQuantity(productId: number): number {
                         </span>
                       </div>
                       <Button
-                        @click.stop.prevent="addToCart(product)"
+                        @click.stop.prevent="handleCartButtonClick(product)"
                         :variant="cartQuantity(product.id) > 0 ? 'outline' : 'primary'"
                         size="sm"
                         class="w-full gap-2"
@@ -467,11 +541,11 @@ function cartQuantity(productId: number): number {
                             ? '!bg-emerald-600 !text-white !border-emerald-600 hover:!bg-emerald-500'
                             : ''
                         "
-                        :disabled="!product.inStock || addingProductId === product.id"
+                        :disabled="(!product.inStock && cartQuantity(product.id) === 0) || (addingProductId === product.id && cartQuantity(product.id) === 0)"
                       >
                         <ShoppingCart :size="16" />
                         <span v-if="!product.inStock">Нет в наличии</span>
-                        <span v-else-if="cartQuantity(product.id) > 0">Добавлен в корзину</span>
+                        <span v-else-if="cartQuantity(product.id) > 0">Перейти в корзину</span>
                         <span v-else>В корзину</span>
                       </Button>
                     </div>

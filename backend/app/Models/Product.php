@@ -20,4 +20,9 @@ class Product extends Model
     {
         return $this->hasMany(UserProduct::class);
     }
+
+    public function media(): HasMany
+    {
+        return $this->hasMany(ProductMedia::class)->orderBy('sort_order');
+    }
 }

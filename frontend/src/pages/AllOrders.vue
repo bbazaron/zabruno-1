@@ -56,7 +56,7 @@ const searchQuery = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const sortByDate = ref<'new' | 'old'>('new')
-const statusFilter = ref<'all' | 'pending' | 'confirmed' | 'processing' | 'production' | 'completed' | 'cancelled'>('all')
+const statusFilter = ref<'all' | 'pending' | 'pending_payment' | 'confirmed' | 'processing' | 'production' | 'completed' | 'cancelled' | 'payment_cancelled'>('all')
 const orderTypeFilter = ref<'all' | 'custom_tailoring' | 'ready_to_wear'>('all')
 const showDateSortMenu = ref(false)
 const showStatusMenu = ref(false)
@@ -98,11 +98,13 @@ function openOrder(orderId: number) {
 /** Подписи статусов для экспорта (как в кабинете / админке) */
 const STATUS_LABEL_RU: Record<string, string> = {
   pending: 'Ожидает',
+  pending_payment: 'Ожидает',
   confirmed: 'Подтверждён',
   processing: 'В работе',
   production: 'В производстве',
   completed: 'Выполнен',
   cancelled: 'Отменён',
+  payment_cancelled: 'Отменён',
 }
 
 function statusLabelRu(status: string): string {
@@ -192,11 +194,13 @@ function orderTypeFilterApiValue(): string | undefined {
 
 const STATUS_BADGE_CLASS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-800 border-amber-200',
+  pending_payment: 'bg-amber-50 text-amber-800 border-amber-200',
   confirmed: 'bg-sky-50 text-sky-800 border-sky-200',
   processing: 'bg-sky-50 text-sky-800 border-sky-200',
   production: 'bg-sky-50 text-sky-800 border-sky-200',
   completed: 'bg-violet-50 text-violet-800 border-violet-200',
   cancelled: 'bg-neutral-100 text-neutral-700 border-neutral-200',
+  payment_cancelled: 'bg-neutral-100 text-neutral-700 border-neutral-200',
 }
 
 function statusBadgeClass(status: string): string {
@@ -489,9 +493,6 @@ onBeforeUnmount(() => {
       <Typography as="h1" class="text-3xl md:text-4xl font-light">Все заказы</Typography>
 
       <div class="mt-2 mb-8 flex flex-wrap gap-3">
-        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
-          Управление администраторами
-        </Button>
         <Button
           :variant="isAdminTabActive('/admin/orders') ? 'primary' : 'secondary'"
           size="sm"
@@ -505,6 +506,9 @@ onBeforeUnmount(() => {
           @click="router.push('/admin/products')"
         >
           Управление товарами
+        </Button>
+        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
+          Управление администраторами
         </Button>
       </div>
 
@@ -668,7 +672,7 @@ onBeforeUnmount(() => {
                         Все
                       </button>
                       <button
-                        v-for="st in ['pending','confirmed','processing','production','completed','cancelled']"
+                        v-for="st in ['pending','pending_payment','confirmed','processing','production','completed','cancelled','payment_cancelled']"
                         :key="st"
                         type="button"
                         class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"

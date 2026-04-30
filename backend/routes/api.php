@@ -43,10 +43,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/admin/admins', [UserController::class, 'createAdmin']);
     });
 });
-Route::post('/yookassa/webhook', [YooKassaController::class, 'handle']);
+Route::post('/yookassa/webhook', [YooKassaController::class, 'handle'])->middleware('throttle:30,1');
 
 Route::get('/index', [ProductController::class, 'index']);
 Route::get('/product/{id}', [ProductController::class, 'getProductPage']);
+Route::middleware('auth:sanctum')->get('/payment/status/latest', [OrderController::class, 'latestPaymentStatus']);
 
 Route::post('/createOrder', [OrderController::class, 'createOrder']);
 Route::post('/orderEstimateTotal', [OrderController::class, 'estimateOrderTotal']);

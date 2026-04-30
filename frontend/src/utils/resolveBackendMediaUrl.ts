@@ -14,8 +14,12 @@ export function resolveBackendMediaUrl(raw: string | null | undefined): string {
     if (typeof window !== 'undefined') return `${window.location.protocol}${s}`
     return `https:${s}`
   }
-  const base = String(axios.defaults.baseURL ?? '').replace(/\/$/, '')
-  const path = s.startsWith('/') ? s : `/${s}`
-  if (!base) return path
-  return `${base}${path}`
+  const apiBase = String(axios.defaults.baseURL ?? '').replace(/\/$/, '')
+  const originBase = apiBase.replace(/\/api$/i, '')
+  const normalized = s.startsWith('/storage/') || s.startsWith('storage/')
+    ? s
+    : `storage/${s.replace(/^\/+/, '')}`
+  const path = normalized.startsWith('/') ? normalized : `/${normalized}`
+  if (!originBase) return path
+  return `${originBase}${path}`
 }

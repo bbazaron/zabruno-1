@@ -84,6 +84,20 @@ class OrderController extends Controller
         ]);
     }
 
+    public function latestPaymentStatus(Request $request): JsonResponse
+    {
+        $payload = $this->orderService->latestPaymentStatus($request);
+
+        if ($payload === null) {
+            return response()->json([
+                'status' => 'not_found',
+                'message' => 'Заказ с оплатой не найден',
+            ], 404);
+        }
+
+        return response()->json($payload);
+    }
+
     public function getAllOrders(Request $request): JsonResponse
     {
         $orders = $this->orderService->getAllOrdersPaginated($request);
@@ -120,7 +134,7 @@ class OrderController extends Controller
     public function updateAdminOrderStatus(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'string', 'max:32', 'in:pending,confirmed,processing,production,cancelled,completed'],
+            'status' => ['required', 'string', 'max:32', 'in:pending,pending_payment,confirmed,processing,production,cancelled,payment_cancelled,completed'],
         ]);
 
         $order = $this->orderService->updateAdminOrderStatus($id, $validated['status']);

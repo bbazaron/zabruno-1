@@ -31,7 +31,13 @@ class YooKassaClient
      * @param  array<string, string>  $metadata
      * @return array{id: string, status: string, confirmation_url: string}
      */
-    public function createRedirectPayment(string $amountValue, string $description, string $returnUrl, array $metadata = []): array
+    public function createRedirectPayment(
+        string $amountValue,
+        string $description,
+        string $returnUrl,
+        array $metadata = [],
+        ?string $idempotenceKey = null,
+    ): array
     {
         if (! $this->isConfigured()) {
             throw new RuntimeException('ЮKassa не настроена: укажите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
@@ -39,7 +45,7 @@ class YooKassaClient
 
         $response = Http::withBasicAuth($this->shopId, $this->secretKey)
             ->withHeaders([
-                'Idempotence-Key' => (string) Str::uuid(),
+                'Idempotence-Key' => $idempotenceKey ?: (string) Str::uuid(),
                 'Content-Type' => 'application/json',
             ])
             ->timeout(45)
@@ -111,17 +117,35 @@ class YooKassaClient
      */
     public function handleWebhook(array $payload): array
     {
+        $event = (string) ($payload['event'] ?? '');
+        $rawObject = $payload['object'] ?? null;
+        $rawPaymentId = is_array($rawObject) ? (string) ($rawObject['id'] ?? '') : '';
+
         if (($payload['type'] ?? '') !== 'notification') {
+            Log::warning('YooKassa webhook: invalid type', [
+                'event' => $event,
+                'payment_id' => $rawPaymentId,
+                'result' => 'invalid_type',
+            ]);
             return ['http' => 400, 'json' => ['message' => 'Invalid type']];
         }
 
-        $event = (string) ($payload['event'] ?? '');
         $object = $payload['object'] ?? null;
         if (! is_array($object) || ($object['id'] ?? '') === '') {
+            Log::warning('YooKassa webhook: invalid object', [
+                'event' => $event,
+                'payment_id' => $rawPaymentId,
+                'result' => 'invalid_object',
+            ]);
             return ['http' => 400, 'json' => ['message' => 'Invalid object']];
         }
 
         if (! str_starts_with($event, 'payment.')) {
+            Log::info('YooKassa webhook: skipped non payment event', [
+                'event' => $event,
+                'payment_id' => (string) $object['id'],
+                'result' => 'skipped',
+            ]);
             return ['http' => 200, 'json' => ['status' => 'skipped']];
         }
 
@@ -142,7 +166,13 @@ class YooKassaClient
 
         $order = Order::query()->where('yookassa_payment_id', $paymentId)->first();
         if ($order === null) {
-            Log::info('YooKassa webhook: no order for payment', ['payment_id' => $paymentId]);
+            Log::info('YooKassa webhook: no order for payment', [
+                'event' => $event,
+                'payment_id' => $paymentId,
+                'order_id' => null,
+                'status' => data_get($payment, 'status'),
+                'result' => 'ignored_no_order',
+            ]);
 
             return ['http' => 200, 'json' => ['status' => 'ignored']];
         }
@@ -150,8 +180,12 @@ class YooKassaClient
         $metaOrderId = data_get($payment, 'metadata.order_id');
         if ((string) $metaOrderId !== (string) $order->id) {
             Log::warning('YooKassa webhook: metadata.order_id mismatch', [
+                'event' => $event,
+                'payment_id' => $paymentId,
                 'order_id' => $order->id,
                 'metadata' => $metaOrderId,
+                'status' => data_get($payment, 'status'),
+                'result' => 'ignored_meta_mismatch',
             ]);
 
             return ['http' => 200, 'json' => ['status' => 'ignored']];
@@ -162,9 +196,13 @@ class YooKassaClient
         $actual = is_numeric($amountValue) ? round((float) $amountValue, 2) : null;
         if ($actual !== null && abs($actual - $expected) > 0.01) {
             Log::warning('YooKassa webhook: amount mismatch', [
+                'event' => $event,
+                'payment_id' => $paymentId,
                 'order_id' => $order->id,
                 'expected' => $expected,
                 'actual' => $actual,
+                'status' => data_get($payment, 'status'),
+                'result' => 'ignored_amount_mismatch',
             ]);
 
             return ['http' => 200, 'json' => ['status' => 'ignored']];
@@ -176,8 +214,19 @@ class YooKassaClient
         if ($event === 'payment.succeeded' && $status === 'succeeded') {
             $updates['status'] = 'confirmed';
         }
+        if ($event === 'payment.canceled' || $status === 'canceled') {
+            $updates['status'] = 'payment_cancelled';
+        }
 
         $order->update($updates);
+
+        Log::info('YooKassa webhook: order updated', [
+            'event' => $event,
+            'payment_id' => $paymentId,
+            'order_id' => $order->id,
+            'status' => $status,
+            'result' => 'ok',
+        ]);
 
         return ['http' => 200, 'json' => ['status' => 'ok']];
     }

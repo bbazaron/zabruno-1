@@ -9,7 +9,7 @@ class ProductController extends Controller
 {
     public function index(Request $request) //каталог
     {
-        $query = Product::query();
+        $query = Product::query()->with('media');
 
         // Фильтр по полу
         if ($request->has('gender') && $request->gender !== 'all') {
@@ -40,18 +40,53 @@ class ProductController extends Controller
 
         $products = $query->get();
 
-        return response()->json($products);
+        $payload = $products->map(function (Product $product) {
+            $mediaUrls = $product->media
+                ->map(fn ($m) => $this->toPublicMediaUrl($m->path))
+                ->filter(fn ($u) => is_string($u) && $u !== '')
+                ->values()
+                ->all();
+            if (empty($mediaUrls) && ! empty($product->image)) {
+                $mediaUrls[] = $this->toPublicMediaUrl($product->image);
+            }
+            $primaryImage = $mediaUrls[0] ?? $this->toPublicMediaUrl($product->image);
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'description' => $product->description,
+                'image' => $primaryImage,
+                'media' => $mediaUrls,
+                'gender' => $product->gender,
+                'category' => $product->category,
+                'price' => $product->price,
+                'original_price' => $product->original_price,
+                'in_stock' => $product->in_stock,
+            ];
+        });
+
+        return response()->json($payload);
     }
 
     public function getProductPage($id)
     {
-        $product = Product::find($id);
+        $product = Product::with('media')->find($id);
 
         if (!$product) {
             return response()->json([
                 'message' => 'Товар не найден'
             ], 404);
         }
+
+        $mediaUrls = $product->media
+            ->map(fn ($m) => $this->toPublicMediaUrl($m->path))
+            ->filter(fn ($u) => is_string($u) && $u !== '')
+            ->values()
+            ->all();
+        if (empty($mediaUrls) && ! empty($product->image)) {
+            $mediaUrls[] = $this->toPublicMediaUrl($product->image);
+        }
+        $primaryImage = $mediaUrls[0] ?? $product->image;
 
         return response()->json([
             'id' => $product->id,
@@ -61,9 +96,35 @@ class ProductController extends Controller
             'originalPrice' => $product->original_price,
             'category' => $product->category,
             'gender' => $product->gender,
-            'image' => $product->image,
-//            'media' => $product->media->map(fn($m) => $m->url), // массив ссылок на изображения/видео
+            'image' => $primaryImage,
+            'media' => $mediaUrls,
             'inStock' => $product->in_stock,
         ]);
+    }
+
+    private function toPublicMediaUrl(?string $path): ?string
+    {
+        if (! $path) {
+            return null;
+        }
+        if (str_starts_with($path, '/storage/')) {
+            return $path;
+        }
+        if (str_starts_with($path, 'storage/')) {
+            return '/'.$path;
+        }
+        if (preg_match('/^https?:\/\//i', $path) === 1) {
+            $urlPath = parse_url($path, PHP_URL_PATH);
+            if (is_string($urlPath) && $urlPath !== '') {
+                $storagePos = strpos($urlPath, '/storage/');
+                if ($storagePos !== false) {
+                    return substr($urlPath, $storagePos);
+                }
+            }
+
+            return $path;
+        }
+
+        return '/storage/'.ltrim($path, '/');
     }
 }

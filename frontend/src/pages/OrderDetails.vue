@@ -17,6 +17,8 @@ interface OrderItem {
   quantity: number
   size_override?: string | null
   line_comment?: string | null
+  unit_price?: string | number | null
+  line_total?: string | number | null
 }
 
 interface OrderDetails {
@@ -110,15 +112,11 @@ function formatMoney(n: number): string {
   }).format(n)
 }
 
-function lineAmount(o: OrderDetails, quantity: number): string | null {
-  const raw = o.total_amount
-  if (raw === null || raw === undefined || raw === '') return null
-  const total = typeof raw === 'number' ? raw : parseFloat(String(raw))
-  if (!Number.isFinite(total) || total <= 0) return null
-  const items = o.items ?? []
-  const sumQty = items.reduce((s, i) => s + i.quantity, 0)
-  if (sumQty <= 0) return null
-  return formatMoney((total * quantity) / sumQty)
+function lineAmount(lineTotal: string | number | null | undefined): string | null {
+  if (lineTotal === null || lineTotal === undefined || lineTotal === '') return null
+  const n = typeof lineTotal === 'number' ? lineTotal : parseFloat(String(lineTotal))
+  if (!Number.isFinite(n)) return null
+  return formatMoney(n)
 }
 
 function formatPhoneDisplay(phone: string | undefined): string {
@@ -141,11 +139,13 @@ function childGenderLabel(g: string): string {
 
 const STATUS_BADGE: Record<string, { label: string; class: string }> = {
   pending: { label: 'В обработке', class: 'bg-amber-50 text-amber-800 border-amber-200' },
+  pending_payment: { label: 'Ожидает', class: 'bg-amber-50 text-amber-800 border-amber-200' },
   confirmed: { label: 'Подтверждён', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   processing: { label: 'В работе', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   production: { label: 'В производстве', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   completed: { label: 'Завершён', class: 'bg-violet-50 text-violet-800 border-violet-200' },
   cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
+  payment_cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
 }
 
 function statusBadge(status: string): { label: string; class: string } {
@@ -355,10 +355,10 @@ onMounted(() => {
                 </p>
               </div>
               <div class="text-left sm:text-right shrink-0 sm:pl-4">
-                <p v-if="lineAmount(order, item.quantity)" class="text-sm text-slate-700">
+                <p v-if="lineAmount(item.line_total)" class="text-sm text-slate-700">
                   <span class="text-slate-500">Сумма:</span>
                   <span class="font-semibold text-slate-900 tabular-nums">
-                    {{ lineAmount(order, item.quantity) }}
+                    {{ lineAmount(item.line_total) }}
                   </span>
                 </p>
                 <p class="text-xs md:text-sm text-slate-500 mt-1 tabular-nums">

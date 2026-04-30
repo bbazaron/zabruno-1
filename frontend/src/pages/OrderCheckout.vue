@@ -25,6 +25,14 @@ const submitLoading = ref(false)
 const submitted = ref(false)
 /** Возврат с страницы оплаты ЮKassa */
 const returnedFromPayment = ref(false)
+const paymentStatusLoading = ref(false)
+const paymentStatusError = ref('')
+const latestPaymentStatus = ref<{
+  order_id: number
+  payment_id: string
+  status: string
+  label: string
+} | null>(null)
 
 /** Есть токен — бэкенд подставит email учётной записи, если поле пустое */
 const isAuthenticated = ref(false)
@@ -35,6 +43,7 @@ onMounted(() => {
   if (Array.isArray(q) ? q[0] === '1' : q === '1') {
     submitted.value = true
     returnedFromPayment.value = true
+    void fetchLatestPaymentStatus()
   }
   const t = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('token')
   isAuthenticated.value = Boolean(t && String(t).trim())
@@ -42,6 +51,28 @@ onMounted(() => {
     void loadAccountEmail()
   }
 })
+
+async function fetchLatestPaymentStatus() {
+  paymentStatusLoading.value = true
+  paymentStatusError.value = ''
+  try {
+    const { data } = await axios.get<{
+      order_id: number
+      payment_id: string
+      status: string
+      label: string
+    }>('/api/payment/status/latest', {
+      headers: getAuthHeaders(),
+    })
+    latestPaymentStatus.value = data
+  } catch (err: any) {
+    latestPaymentStatus.value = null
+    const message = String(err?.response?.data?.message ?? '').trim()
+    paymentStatusError.value = message || 'Не удалось получить статус оплаты'
+  } finally {
+    paymentStatusLoading.value = false
+  }
+}
 
 const stepLabels = [
   'Данные ребёнка',
@@ -777,14 +808,34 @@ const summaryLines = computed(() => {
           <Typography as="h1" variant="h2" class="mb-4 text-slate-900">
             {{ returnedFromPayment ? 'Возврат из оплаты' : 'Заказ оформлен' }}
           </Typography>
-          <Typography as="p" variant="body" class="text-slate-600 mb-8">
+          <Typography as="p" variant="body" class="text-slate-600 mb-4">
             <template v-if="returnedFromPayment">
-              Если оплата в ЮKassa прошла успешно, заказ поступит в обработку. Статус можно посмотреть в разделе «Мои заказы».
+              Проверили последний заказ с оплатой.
             </template>
             <template v-else>
               Сумма заказа нулевая — оплата не требуется. Мы свяжемся с вами для уточнения деталей. Спасибо за заказ!
             </template>
           </Typography>
+          <div v-if="returnedFromPayment" class="mb-8 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-left">
+            <p v-if="paymentStatusLoading" class="text-sm text-slate-600">Проверяем статус оплаты...</p>
+            <template v-else-if="latestPaymentStatus">
+              <p class="text-sm text-slate-600">Заказ #{{ latestPaymentStatus.order_id }}</p>
+              <p class="mt-1 text-base font-semibold text-slate-900">{{ latestPaymentStatus.label }}</p>
+            </template>
+            <p v-else class="text-sm text-slate-600">
+              {{ paymentStatusError || 'Не найден' }}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              class="mt-3"
+              :disabled="paymentStatusLoading"
+              @click="fetchLatestPaymentStatus"
+            >
+              Проверить еще раз
+            </Button>
+          </div>
           <Button variant="primary" class="inline-flex" @click="$router.push('/')">
             На главную
           </Button>

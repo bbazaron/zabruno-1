@@ -10,6 +10,8 @@ import { useToast } from '../composables/useToast'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 
 const AUTH_TOKEN_KEY = 'auth_token'
+const MAX_MEDIA_FILES = 10
+const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 interface AdminProduct {
   id: number
@@ -21,6 +23,11 @@ interface AdminProduct {
   original_price: string | number | null
   color: string | null
   image: string | null
+  media?: Array<{
+    id: number
+    path: string
+    sort_order: number
+  }>
   description: string | null
   in_stock: boolean
 }
@@ -41,7 +48,10 @@ const formSeason = ref('')
 const formPrice = ref('')
 const formOriginalPrice = ref('')
 const formColor = ref('')
-const formImage = ref('')
+const formMediaFiles = ref<File[]>([])
+const existingMedia = ref<Array<{ id: number; path: string; sort_order: number }>>([])
+const removeMediaIds = ref<number[]>([])
+const mediaInputKey = ref(0)
 const formDescription = ref('')
 const formInStock = ref(true)
 
@@ -60,6 +70,19 @@ const categoryLabelById = Object.fromEntries(categories.map((category) => [categ
 
 const inputClass =
   'w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900'
+const fileRowClass =
+  'flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm'
+
+function fileSignature(file: File): string {
+  return `${file.name}|${file.size}|${file.lastModified}`
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${kb.toFixed(1)} КБ`
+  return `${(kb / 1024).toFixed(1)} МБ`
+}
 
 function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = { Accept: 'application/json' }
@@ -77,7 +100,10 @@ function resetForm() {
   formPrice.value = ''
   formOriginalPrice.value = ''
   formColor.value = ''
-  formImage.value = ''
+  formMediaFiles.value = []
+  existingMedia.value = []
+  removeMediaIds.value = []
+  mediaInputKey.value += 1
   formDescription.value = ''
   formInStock.value = true
 }
@@ -92,12 +118,15 @@ function fillForm(p: AdminProduct) {
   formOriginalPrice.value =
     p.original_price != null && p.original_price !== '' ? String(p.original_price) : ''
   formColor.value = p.color ?? ''
-  formImage.value = p.image ?? ''
+  formMediaFiles.value = []
+  existingMedia.value = Array.isArray(p.media) ? [...p.media].sort((a, b) => a.sort_order - b.sort_order) : []
+  removeMediaIds.value = []
+  mediaInputKey.value += 1
   formDescription.value = p.description ?? ''
   formInStock.value = Boolean(p.in_stock)
 }
 
-function buildPayload(): Record<string, unknown> {
+function buildPayload(): Record<string, string | number | boolean | null> {
   const price = parseFloat(String(formPrice.value).replace(',', '.'))
   const originalRaw = formOriginalPrice.value.trim()
   const original =
@@ -110,10 +139,88 @@ function buildPayload(): Record<string, unknown> {
     price: Number.isFinite(price) ? price : 0,
     original_price: original != null && Number.isFinite(original) ? original : null,
     color: formColor.value.trim() || null,
-    image: formImage.value.trim() || null,
     description: formDescription.value.trim() || null,
     in_stock: formInStock.value,
   }
+}
+
+function onMediaFilesChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  if (files.length === 0) return
+
+  const next = [...formMediaFiles.value]
+  const known = new Set(next.map(fileSignature))
+  let skippedByType = 0
+  let skippedByLimit = 0
+
+  for (const file of files) {
+    if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+      skippedByType += 1
+      continue
+    }
+    const signature = fileSignature(file)
+    if (known.has(signature)) {
+      continue
+    }
+    if (next.length >= MAX_MEDIA_FILES) {
+      skippedByLimit += 1
+      continue
+    }
+    next.push(file)
+    known.add(signature)
+  }
+
+  formMediaFiles.value = next
+  input.value = ''
+
+  if (skippedByType > 0) {
+    showToast('Можно загружать только PNG, JPG, JPEG и WEBP', 'error')
+  }
+  if (skippedByLimit > 0) {
+    showToast(`Можно выбрать не более ${MAX_MEDIA_FILES} файлов`, 'error')
+  }
+}
+
+function removeSelectedMediaFile(index: number) {
+  formMediaFiles.value = formMediaFiles.value.filter((_, idx) => idx !== index)
+}
+
+function markExistingMediaForRemoval(mediaId: number) {
+  if (removeMediaIds.value.includes(mediaId)) return
+  removeMediaIds.value = [...removeMediaIds.value, mediaId]
+}
+
+function restoreExistingMedia(mediaId: number) {
+  removeMediaIds.value = removeMediaIds.value.filter((id) => id !== mediaId)
+}
+
+function existingMediaMarkedForRemoval(mediaId: number): boolean {
+  return removeMediaIds.value.includes(mediaId)
+}
+
+function buildFormData(): FormData {
+  const payload = buildPayload()
+  const fd = new FormData()
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined) continue
+    if (value === null) {
+      fd.append(key, '')
+      continue
+    }
+    if (typeof value === 'boolean') {
+      fd.append(key, value ? '1' : '0')
+      continue
+    }
+    fd.append(key, String(value))
+  }
+  for (const file of formMediaFiles.value) {
+    fd.append('media[]', file)
+  }
+  for (const mediaId of removeMediaIds.value) {
+    fd.append('remove_media_ids[]', String(mediaId))
+  }
+  return fd
 }
 
 function formatApiError(err: unknown): string {
@@ -162,9 +269,10 @@ async function submitForm() {
 
   saving.value = true
   try {
-    const payload = buildPayload()
+    const payload = buildFormData()
     if (editingId.value != null) {
-      await axios.patch(`/api/admin/products/${editingId.value}`, payload, {
+      payload.append('_method', 'PATCH')
+      await axios.post(`/api/admin/products/${editingId.value}`, payload, {
         headers: getAuthHeaders(),
       })
       showToast('Товар обновлён', 'success')
@@ -221,9 +329,6 @@ onMounted(() => {
       <Typography as="h1" class="text-3xl md:text-4xl font-light">Управление товарами</Typography>
 
       <div class="mt-2 mb-8 flex flex-wrap gap-3">
-        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
-          Управление администраторами
-        </Button>
         <Button
           :variant="isAdminTabActive('/admin/orders') ? 'primary' : 'secondary'"
           size="sm"
@@ -237,6 +342,9 @@ onMounted(() => {
           @click="router.push('/admin/products')"
         >
           Управление товарами
+        </Button>
+        <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
+          Управление администраторами
         </Button>
       </div>
 
@@ -295,16 +403,82 @@ onMounted(() => {
             <input id="ap-color" v-model="formColor" type="text" :class="inputClass" placeholder="Необязательно" />
           </div>
           <div class="md:col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-image"
-              >Путь к изображению</label
-            >
+            <label class="block text-xs font-medium text-slate-600 mb-2">Изображения товара</label>
+            <div v-if="editingId != null && existingMedia.length > 0" class="mb-3 space-y-2">
+              <p class="text-xs text-slate-500">Текущие изображения товара</p>
+              <div
+                v-for="media in existingMedia"
+                :key="media.id"
+                class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-3 py-2"
+              >
+                <div class="flex min-w-0 items-center gap-3">
+                  <img
+                    :src="resolveBackendMediaUrl(media.path)"
+                    alt=""
+                    class="h-12 w-12 rounded object-cover border border-neutral-200"
+                  />
+                  <div class="min-w-0">
+                    <p class="truncate text-sm text-slate-800">{{ media.path.split('/').pop() }}</p>
+                    <p class="text-xs text-slate-500">
+                      {{ media.sort_order === 0 ? 'Главное изображение' : `Позиция ${media.sort_order + 1}` }}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  v-if="!existingMediaMarkedForRemoval(media.id)"
+                  type="button"
+                  class="shrink-0 text-xs text-red-600 underline hover:text-red-800"
+                  @click="markExistingMediaForRemoval(media.id)"
+                >
+                  Удалить
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="shrink-0 text-xs text-slate-700 underline hover:text-slate-900"
+                  @click="restoreExistingMedia(media.id)"
+                >
+                  Отменить удаление
+                </button>
+              </div>
+              <p v-if="removeMediaIds.length > 0" class="text-xs text-amber-700">
+                Выбрано к удалению: {{ removeMediaIds.length }}. Удаление произойдет после сохранения.
+              </p>
+            </div>
             <input
+              :key="mediaInputKey"
               id="ap-image"
-              v-model="formImage"
-              type="text"
-              :class="inputClass"
-              placeholder="Например: /storage/products/photo.jpg"
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp"
+              multiple
+              class="hidden"
+              @change="onMediaFilesChange"
             />
+            <div class="flex flex-wrap items-center gap-3">
+              <label
+                for="ap-image"
+                class="inline-flex cursor-pointer items-center rounded-md border border-neutral-300 px-3 py-2 text-sm text-slate-700 hover:bg-neutral-100"
+              >
+                Добавить файлы
+              </label>
+              <span class="text-xs text-slate-500">Выбрано {{ formMediaFiles.length }} из {{ MAX_MEDIA_FILES }}</span>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">Можно выбрать несколько файлов и добавлять их поэтапно.</p>
+            <div v-if="formMediaFiles.length > 0" class="mt-3 space-y-2">
+              <div v-for="(file, idx) in formMediaFiles" :key="fileSignature(file)" :class="fileRowClass">
+                <div class="min-w-0">
+                  <p class="truncate text-sm text-slate-800">{{ file.name }}</p>
+                  <p class="text-xs text-slate-500">{{ formatFileSize(file.size) }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="shrink-0 text-xs text-red-600 underline hover:text-red-800"
+                  @click="removeSelectedMediaFile(idx)"
+                >
+                  Убрать
+                </button>
+              </div>
+            </div>
           </div>
           <div class="md:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-desc">Описание</label>

@@ -38,6 +38,7 @@ class Order extends Model
         'total_amount',
         'yookassa_payment_id',
         'yookassa_payment_status',
+        'yookassa_idempotence_key',
     ];
 
     protected function casts(): array

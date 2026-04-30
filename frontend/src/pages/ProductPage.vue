@@ -7,7 +7,7 @@ import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
-import { ShoppingCart } from 'lucide-vue-next'
+import { ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 import { useToast } from '../composables/useToast'
 
@@ -18,6 +18,8 @@ const { showToast } = useToast()
 
 const product = ref<any>(null)
 const selectedMedia = ref('') // ссылка на текущее главное изображение/видео
+const isMediaViewerOpen = ref(false)
+const activeMediaIndex = ref(0)
 const selectedSize = ref<'XS' | 'S' | 'M' | 'L' | 'XL'>('M')
 const cartLoading = ref(false)
 const availableSizes: Array<'XS' | 'S' | 'M' | 'L' | 'XL'> = ['XS', 'S', 'M', 'L', 'XL']
@@ -29,6 +31,9 @@ async function fetchProduct() {
       headers: { Accept: 'application/json' },
     })
     product.value = response.data
+    if (typeof product.value?.name === 'string' && product.value.name.trim()) {
+      document.title = product.value.name.trim()
+    }
     selectedMedia.value = resolveBackendMediaUrl(product.value.image) // первое изображение по умолчанию
     await loadCartState()
   } catch (err) {
@@ -40,9 +45,41 @@ onMounted(fetchProduct)
 
 function selectMedia(url: string) {
   selectedMedia.value = resolveBackendMediaUrl(url)
+  const mediaList = Array.isArray(product.value?.media) ? product.value.media : []
+  const idx = mediaList.findIndex((item: string) => resolveBackendMediaUrl(item) === selectedMedia.value)
+  activeMediaIndex.value = idx >= 0 ? idx : 0
+}
+
+function mediaListResolved(): string[] {
+  const list = Array.isArray(product.value?.media) ? product.value.media : []
+  return list.map((item: string) => resolveBackendMediaUrl(item)).filter(Boolean)
+}
+
+function openMediaViewer() {
+  const list = mediaListResolved()
+  if (list.length === 0) return
+  const idx = list.findIndex((item) => item === selectedMedia.value)
+  activeMediaIndex.value = idx >= 0 ? idx : 0
+  isMediaViewerOpen.value = true
+}
+
+function closeMediaViewer() {
+  isMediaViewerOpen.value = false
+}
+
+function goToMediaByStep(step: number) {
+  const list = mediaListResolved()
+  if (list.length === 0) return
+  const next = (activeMediaIndex.value + step + list.length) % list.length
+  activeMediaIndex.value = next
+  selectedMedia.value = list[next]
 }
 
 function addToCart() {
+  if (cartQuantityForSelectedSize() > 0) {
+    void router.push('/cart')
+    return
+  }
   void addToCartAction()
 }
 
@@ -135,7 +172,10 @@ async function addToCartAction() {
       <div v-if="product" class="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start">
         <!-- Левый блок: галерея -->
         <div class="flex flex-col items-start gap-4">
-          <div class="w-full max-w-[640px] h-[500px] bg-neutral-100 rounded-lg overflow-hidden">
+          <div
+            class="w-full max-w-[640px] h-[500px] bg-neutral-100 rounded-lg overflow-hidden cursor-zoom-in"
+            @click="openMediaViewer"
+          >
             <img :src="selectedMedia" alt="product" class="object-contain h-full w-full" />
           </div>
           <div class="flex flex-wrap gap-3">
@@ -198,7 +238,7 @@ async function addToCartAction() {
               "
           >
             <ShoppingCart :size="16" />
-            <span v-if="cartQuantityForSelectedSize() > 0">Добавлен в корзину</span>
+            <span v-if="cartQuantityForSelectedSize() > 0">Перейти в корзину</span>
             <span v-else>В корзину</span>
           </Button>
         </div>
@@ -211,5 +251,46 @@ async function addToCartAction() {
     </main>
 
     <Footer />
+
+    <div
+      v-if="isMediaViewerOpen"
+      class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+      @click.self="closeMediaViewer"
+    >
+      <button
+        type="button"
+        class="absolute top-4 right-4 text-white text-3xl leading-none hover:text-neutral-300"
+        @click="closeMediaViewer"
+        aria-label="Закрыть просмотр изображения"
+      >
+        ×
+      </button>
+
+      <div class="relative max-h-[90vh] max-w-[90vw] flex items-center justify-center">
+        <button
+          type="button"
+          class="absolute -left-6 md:-left-8 z-10 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
+          @click.stop="goToMediaByStep(-1)"
+          aria-label="Предыдущее изображение"
+        >
+          <ChevronLeft :size="22" />
+        </button>
+
+        <img
+          :src="mediaListResolved()[activeMediaIndex] || selectedMedia"
+          alt="Просмотр изображения товара"
+          class="max-h-[90vh] max-w-[90vw] object-contain"
+        />
+
+        <button
+          type="button"
+          class="absolute -right-6 md:-right-8 z-10 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
+          @click.stop="goToMediaByStep(1)"
+          aria-label="Следующее изображение"
+        >
+          <ChevronRight :size="22" />
+        </button>
+      </div>
+    </div>
   </div>
 </template>

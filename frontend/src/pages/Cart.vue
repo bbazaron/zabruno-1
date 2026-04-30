@@ -162,11 +162,6 @@ async function removeItem(itemId: number) {
   }
 }
 
-function goToProduct(productId?: number) {
-  if (!productId) return
-  router.push(`/product/${productId}`)
-}
-
 onMounted(() => {
   void loadUser()
   void loadCart()
@@ -244,10 +239,12 @@ onMounted(() => {
             :key="item.id"
             class="rounded-xl border border-neutral-200 bg-white p-4 flex flex-col sm:flex-row gap-4"
           >
-            <button
-              type="button"
+            <a
+              v-if="item.product?.id"
+              :href="`/product/${item.product.id}`"
+              target="_blank"
+              rel="noopener noreferrer"
               class="shrink-0 h-24 w-24 rounded-lg border border-neutral-200 bg-neutral-100 overflow-hidden"
-              @click="goToProduct(item.product?.id)"
             >
               <img
                 v-if="item.product?.image"
@@ -255,10 +252,30 @@ onMounted(() => {
                 :alt="item.product?.name || 'product'"
                 class="h-full w-full object-cover"
               />
-            </button>
+            </a>
+            <div
+              v-else
+              class="shrink-0 h-24 w-24 rounded-lg border border-neutral-200 bg-neutral-100 overflow-hidden"
+            >
+              <img
+                v-if="item.product?.image"
+                :src="resolveBackendMediaUrl(item.product?.image)"
+                :alt="item.product?.name || 'product'"
+                class="h-full w-full object-cover"
+              />
+            </div>
 
             <div class="flex-1 min-w-0">
-              <p class="font-semibold text-slate-900">
+              <a
+                v-if="item.product?.id"
+                :href="`/product/${item.product.id}`"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="font-semibold text-slate-900 hover:text-slate-700 hover:underline underline-offset-2"
+              >
+                {{ item.product?.name || 'Товар недоступен' }}
+              </a>
+              <p v-else class="font-semibold text-slate-900">
                 {{ item.product?.name || 'Товар недоступен' }}
               </p>
               <p v-if="item.selected_size" class="text-xs text-slate-500 mt-1">
