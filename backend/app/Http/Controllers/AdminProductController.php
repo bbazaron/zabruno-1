@@ -40,6 +40,7 @@ class AdminProductController extends Controller
         if (! array_key_exists('in_stock', $validated)) {
             $validated['in_stock'] = true;
         }
+        $validated['image'] = $this->sanitizeImagePath($validated['image'] ?? null);
 
         $product = DB::transaction(function () use ($request, $validated) {
             $product = Product::create($validated);
@@ -72,6 +73,9 @@ class AdminProductController extends Controller
             'remove_media_ids' => 'sometimes|array',
             'remove_media_ids.*' => 'integer',
         ]);
+        if (array_key_exists('image', $validated)) {
+            $validated['image'] = $this->sanitizeImagePath($validated['image']);
+        }
 
         $product = DB::transaction(function () use ($request, $product, $validated) {
             $product->update($validated);
@@ -133,8 +137,18 @@ class AdminProductController extends Controller
     private function refreshPrimaryImage(Product $product): void
     {
         $firstMedia = $product->media()->orderBy('sort_order')->first();
-        $fallbackImage = $product->image;
+        $fallbackImage = $this->sanitizeImagePath($product->image);
         $product->image = $firstMedia?->path ?? $fallbackImage;
         $product->save();
+    }
+
+    private function sanitizeImagePath(?string $path): ?string
+    {
+        $value = trim((string) ($path ?? ''));
+        if ($value === '' || $value === '0' || strtolower($value) === 'null') {
+            return null;
+        }
+
+        return $value;
     }
 }

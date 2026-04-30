@@ -104,7 +104,8 @@ class ProductController extends Controller
 
     private function toPublicMediaUrl(?string $path): ?string
     {
-        if (! $path) {
+        $path = trim((string) ($path ?? ''));
+        if ($path === '' || $path === '0' || strtolower($path) === 'null') {
             return null;
         }
         if (str_starts_with($path, '/storage/')) {
