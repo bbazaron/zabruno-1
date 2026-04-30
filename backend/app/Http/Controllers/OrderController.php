@@ -134,7 +134,7 @@ class OrderController extends Controller
     public function updateAdminOrderStatus(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'string', 'max:32', 'in:pending,pending_payment,confirmed,processing,production,cancelled,payment_cancelled,completed'],
+            'status' => ['required', 'string', 'max:32', 'in:pending,pending_payment,confirmed,processing,production,cancelled,payment_cancelled,completed,partially_refunded,refunded'],
         ]);
 
         $order = $this->orderService->updateAdminOrderStatus($id, $validated['status']);
@@ -164,6 +164,47 @@ class OrderController extends Controller
         return response()->json([
             'message' => 'Заказ обновлён',
             'order' => $order,
+        ]);
+    }
+
+    public function createAdminRefund(Request $request, int $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'reason_code' => ['required', 'string', 'in:customer_request,out_of_stock,order_cancelled,other'],
+            'reason_comment' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $adminUser = $request->user();
+        if ($adminUser === null) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        try {
+            $result = $this->orderService->createAdminRefund(
+                $id,
+                (int) $adminUser->id,
+                (float) $validated['amount'],
+                (string) $validated['reason_code'],
+                isset($validated['reason_comment']) ? (string) $validated['reason_comment'] : null,
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'Не удалось оформить возврат',
+            ], 502);
+        }
+
+        return response()->json([
+            'message' => 'Возврат оформлен',
+            'order' => $result['order'],
+            'refund' => $result['refund'],
+            'available_to_refund' => $result['available_to_refund'],
         ]);
     }
 }

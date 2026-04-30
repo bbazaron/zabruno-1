@@ -32,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/orders/{id}', [OrderController::class, 'getAdminOrderById']);
         Route::patch('/admin/orders/{id}', [OrderController::class, 'updateAdminOrder']);
         Route::patch('/admin/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus']);
+        Route::post('/admin/orders/{id}/refunds', [OrderController::class, 'createAdminRefund']);
 
         Route::get('/admin/products', [AdminProductController::class, 'index']);
         Route::post('/admin/products', [AdminProductController::class, 'store']);

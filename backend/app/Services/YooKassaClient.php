@@ -110,6 +110,60 @@ class YooKassaClient
     }
 
     /**
+     * @param  array<string, string>  $metadata
+     * @return array{id:string,status:string,payment_id:string,amount:string}
+     */
+    public function createRefund(
+        string $paymentId,
+        string $amountValue,
+        string $description,
+        ?string $idempotenceKey = null,
+        array $metadata = [],
+    ): array
+    {
+        if (! $this->isConfigured()) {
+            throw new RuntimeException('ЮKassa не настроена: укажите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
+        }
+
+        $response = Http::withBasicAuth($this->shopId, $this->secretKey)
+            ->withHeaders([
+                'Idempotence-Key' => $idempotenceKey ?: (string) Str::uuid(),
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(45)
+            ->post('https://api.yookassa.ru/v3/refunds', [
+                'payment_id' => $paymentId,
+                'amount' => [
+                    'value' => $amountValue,
+                    'currency' => 'RUB',
+                ],
+                'description' => $description,
+                'metadata' => $metadata,
+            ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Не удалось создать возврат в ЮKassa: HTTP '.$response->status());
+        }
+
+        $data = $response->json();
+        $id = data_get($data, 'id');
+        $status = data_get($data, 'status');
+        $responsePaymentId = data_get($data, 'payment_id');
+        $responseAmount = data_get($data, 'amount.value');
+
+        if (! is_string($id) || ! is_string($responsePaymentId) || ! is_string($responseAmount)) {
+            throw new RuntimeException('ЮKassa вернула неполный ответ при создании возврата');
+        }
+
+        return [
+            'id' => $id,
+            'status' => is_string($status) ? $status : 'pending',
+            'payment_id' => $responsePaymentId,
+            'amount' => $responseAmount,
+        ];
+    }
+
+    /**
      * Обработка тела HTTP-уведомления ЮKassa (notification).
      *
      * @param  array<string, mixed>  $payload

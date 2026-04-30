@@ -303,6 +303,12 @@ onMounted(() => {
           </Button>
         </aside>
       </div>
+      <p
+        v-if="!loading"
+        class="mt-6 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-slate-700 leading-relaxed"
+      >
+        Получение заказа по адресу: пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16
+      </p>
     </main>
     <Footer />
   </div>

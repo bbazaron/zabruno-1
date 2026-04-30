@@ -36,6 +36,7 @@ class Order extends Model
         'recipient_phone',
         'terms_accepted',
         'total_amount',
+        'refunded_amount',
         'yookassa_payment_id',
         'yookassa_payment_status',
         'yookassa_idempotence_key',
@@ -47,6 +48,7 @@ class Order extends Model
             'recipient_is_customer' => 'boolean',
             'terms_accepted' => 'boolean',
             'total_amount' => 'decimal:2',
+            'refunded_amount' => 'decimal:2',
         ];
     }
 
@@ -58,5 +60,10 @@ class Order extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class)->orderBy('position');
+    }
+
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(PaymentRefund::class)->latest();
     }
 }

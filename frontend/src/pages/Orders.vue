@@ -249,6 +249,8 @@ const STATUS_BADGE: Record<string, { label: string; class: string }> = {
   confirmed: { label: 'Подтверждён', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   processing: { label: 'В работе', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   production: { label: 'В производстве', class: 'bg-sky-50 text-sky-800 border-sky-200' },
+  partially_refunded: { label: 'Частично возвращён', class: 'bg-amber-50 text-amber-800 border-amber-200' },
+  refunded: { label: 'Возвращён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
   completed: { label: 'Завершён', class: 'bg-violet-50 text-violet-800 border-violet-200' },
   cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
   payment_cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },

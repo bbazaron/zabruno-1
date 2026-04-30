@@ -56,7 +56,7 @@ const searchQuery = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const sortByDate = ref<'new' | 'old'>('new')
-const statusFilter = ref<'all' | 'pending' | 'pending_payment' | 'confirmed' | 'processing' | 'production' | 'completed' | 'cancelled' | 'payment_cancelled'>('all')
+const statusFilter = ref<'all' | 'pending' | 'pending_payment' | 'confirmed' | 'processing' | 'production' | 'partially_refunded' | 'refunded' | 'completed' | 'cancelled' | 'payment_cancelled'>('all')
 const orderTypeFilter = ref<'all' | 'custom_tailoring' | 'ready_to_wear'>('all')
 const showDateSortMenu = ref(false)
 const showStatusMenu = ref(false)
@@ -102,6 +102,8 @@ const STATUS_LABEL_RU: Record<string, string> = {
   confirmed: 'Подтверждён',
   processing: 'В работе',
   production: 'В производстве',
+  partially_refunded: 'Частично возвращён',
+  refunded: 'Возвращён',
   completed: 'Выполнен',
   cancelled: 'Отменён',
   payment_cancelled: 'Отменён',
@@ -198,6 +200,8 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   confirmed: 'bg-sky-50 text-sky-800 border-sky-200',
   processing: 'bg-sky-50 text-sky-800 border-sky-200',
   production: 'bg-sky-50 text-sky-800 border-sky-200',
+  partially_refunded: 'bg-amber-50 text-amber-800 border-amber-200',
+  refunded: 'bg-neutral-100 text-neutral-700 border-neutral-200',
   completed: 'bg-violet-50 text-violet-800 border-violet-200',
   cancelled: 'bg-neutral-100 text-neutral-700 border-neutral-200',
   payment_cancelled: 'bg-neutral-100 text-neutral-700 border-neutral-200',
@@ -223,7 +227,7 @@ function exportOrdersXlsxFileName(): string {
 }
 
 /** Заказы, которые не должны попадать в сводку «для производства» */
-const PRODUCTION_EXCLUDED_STATUSES = new Set(['cancelled', 'completed'])
+const PRODUCTION_EXCLUDED_STATUSES = new Set(['cancelled', 'completed', 'refunded'])
 
 function effectiveLineSize(item: AdminOrderItem, order: AdminOrder): string {
   const o = item.size_override != null ? String(item.size_override).trim() : ''
@@ -672,7 +676,7 @@ onBeforeUnmount(() => {
                         Все
                       </button>
                       <button
-                        v-for="st in ['pending','pending_payment','confirmed','processing','production','completed','cancelled','payment_cancelled']"
+                        v-for="st in ['pending','pending_payment','confirmed','processing','production','partially_refunded','refunded','completed','cancelled','payment_cancelled']"
                         :key="st"
                         type="button"
                         class="block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-neutral-100"

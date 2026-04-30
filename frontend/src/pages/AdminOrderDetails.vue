@@ -26,6 +26,9 @@ interface OrderDetails {
   order_type?: string
   created_at: string
   total_amount?: string | number | null
+  refunded_amount?: string | number | null
+  yookassa_payment_id?: string | null
+  yookassa_payment_status?: string | null
   child_full_name: string
   child_gender: string
   settlement: string
@@ -113,12 +116,24 @@ const ORDER_STATUSES = [
   { value: 'confirmed', label: 'Подтверждён' },
   { value: 'processing', label: 'В работе' },
   { value: 'production', label: 'В производстве' },
+  { value: 'partially_refunded', label: 'Частично возвращён' },
+  { value: 'refunded', label: 'Возвращён' },
   { value: 'completed', label: 'Выполнен' },
   { value: 'cancelled', label: 'Отменён' },
 ] as const
 
 const selectedStatus = ref<string>('pending')
 const savingStatus = ref(false)
+const refunding = ref(false)
+const refundAmount = ref<string>('')
+const refundReasonCode = ref<string>('customer_request')
+const refundReasonComment = ref<string>('')
+const REFUND_REASONS = [
+  { value: 'customer_request', label: 'Запрос клиента' },
+  { value: 'out_of_stock', label: 'Нет в наличии' },
+  { value: 'order_cancelled', label: 'Отмена заказа' },
+  { value: 'other', label: 'Другое' },
+] as const
 
 function normalizeStatusForSelect(status: string | null | undefined): string {
   const key = String(status ?? '').toLowerCase().replace(/\s+/g, '_')
@@ -193,6 +208,12 @@ function formatMoney(n: number): string {
   }).format(n)
 }
 
+function parseAmount(raw: string | number | null | undefined): number {
+  if (raw === null || raw === undefined || raw === '') return 0
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw))
+  return Number.isFinite(n) ? n : 0
+}
+
 function lineAmount(lineTotal: string | number | null | undefined): string | null {
   if (lineTotal === null || lineTotal === undefined || lineTotal === '') return null
   const n = typeof lineTotal === 'number' ? lineTotal : parseFloat(String(lineTotal))
@@ -230,6 +251,8 @@ const STATUS_BADGE: Record<string, { label: string; class: string }> = {
   confirmed: { label: 'Подтверждён', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   processing: { label: 'В работе', class: 'bg-sky-50 text-sky-800 border-sky-200' },
   production: { label: 'В производстве', class: 'bg-sky-50 text-sky-800 border-sky-200' },
+  partially_refunded: { label: 'Частично возвращён', class: 'bg-amber-50 text-amber-800 border-amber-200' },
+  refunded: { label: 'Возвращён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
   completed: { label: 'Завершён', class: 'bg-violet-50 text-violet-800 border-violet-200' },
   cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
   payment_cancelled: { label: 'Отменён', class: 'bg-neutral-100 text-neutral-700 border-neutral-200' },
@@ -248,6 +271,31 @@ function statusBadge(status: string): { label: string; class: string } {
 function normalizeRecipientIsCustomer(v: unknown): boolean {
   return v === true || v === 1 || v === '1'
 }
+
+const availableToRefund = computed(() => {
+  const o = order.value
+  if (!o) return 0
+  const total = parseAmount(o.total_amount)
+  const refunded = parseAmount(o.refunded_amount)
+  return Math.max(0, Number((total - refunded).toFixed(2)))
+})
+
+const canRefund = computed(() => {
+  const paymentId = String(order.value?.yookassa_payment_id ?? '').trim()
+  const paymentStatus = String(order.value?.yookassa_payment_status ?? '').trim().toLowerCase()
+  return paymentId.length > 0 && paymentStatus === 'succeeded' && availableToRefund.value > 0.009
+})
+
+const refundUnavailableReason = computed(() => {
+  const o = order.value
+  if (!o) return 'Заказ не загружен.'
+  const paymentId = String(o.yookassa_payment_id ?? '').trim()
+  const paymentStatus = String(o.yookassa_payment_status ?? '').trim().toLowerCase()
+  if (paymentId.length === 0) return 'У заказа нет платежа ЮKassa.'
+  if (paymentStatus !== 'succeeded') return 'Возврат доступен только для оплаченных заказов.'
+  if (availableToRefund.value <= 0.009) return 'Лимит возврата исчерпан.'
+  return ''
+})
 
 function orderToDraft(o: AdminOrder): OrderDraft {
   return {
@@ -472,6 +520,48 @@ async function saveOrderDraft() {
   }
 }
 
+async function submitRefund() {
+  const token = getStoredToken()
+  if (!token || !order.value || !canRefund.value) return
+
+  const amount = Number(parseFloat(refundAmount.value || '0').toFixed(2))
+  if (!Number.isFinite(amount) || amount <= 0) {
+    showToast('Укажите корректную сумму возврата', 'error')
+    return
+  }
+  if (amount - availableToRefund.value > 0.01) {
+    showToast('Сумма возврата превышает доступный лимит', 'error')
+    return
+  }
+
+  refunding.value = true
+  try {
+    const response = await axios.post(
+      `/api/admin/orders/${orderId.value}/refunds`,
+      {
+        amount,
+        reason_code: refundReasonCode.value,
+        reason_comment: refundReasonComment.value.trim() || null,
+      },
+      {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+    order.value = response.data?.order ?? order.value
+    refundAmount.value = ''
+    refundReasonComment.value = ''
+    showToast('Возврат оформлен', 'success')
+  } catch (err: any) {
+    const msg = err?.response?.data?.message
+    showToast(typeof msg === 'string' ? msg : 'Не удалось оформить возврат', 'error')
+  } finally {
+    refunding.value = false
+  }
+}
+
 onMounted(() => {
   void loadProducts()
   loadOrder()
@@ -570,6 +660,53 @@ onMounted(() => {
                 </Button>
               </template>
             </div>
+          </div>
+          <div class="mt-4 border-t border-neutral-100 pt-4">
+            <div class="flex flex-col lg:flex-row lg:items-end gap-3">
+              <div class="text-sm text-slate-700 min-w-[180px]">
+                <p>
+                  <span class="text-slate-500">Возвращено:</span>
+                  {{ formatOrderTotal(order.refunded_amount) }}
+                </p>
+                <p>
+                  <span class="text-slate-500">Доступно:</span>
+                  {{ formatMoney(availableToRefund) }}
+                </p>
+              </div>
+              <input
+                v-model="refundAmount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                :max="availableToRefund"
+                placeholder="Сумма возврата"
+                class="w-full lg:w-[180px] border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                :disabled="!canRefund || refunding"
+              />
+              <select
+                v-model="refundReasonCode"
+                class="w-full lg:w-[220px] border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                :disabled="!canRefund || refunding"
+              >
+                <option v-for="reason in REFUND_REASONS" :key="reason.value" :value="reason.value">
+                  {{ reason.label }}
+                </option>
+              </select>
+              <input
+                v-model="refundReasonComment"
+                type="text"
+                maxlength="500"
+                placeholder="Комментарий (необязательно)"
+                class="w-full lg:w-[260px] border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                :disabled="!canRefund || refunding"
+              />
+              <Button type="button" variant="primary" size="md" :disabled="!canRefund || refunding" @click="submitRefund">
+                {{ refunding ? 'Оформляем...' : 'Оформить возврат' }}
+              </Button>
+            </div>
+            <p v-if="!canRefund" class="mt-2 text-xs text-slate-500">
+              Возврат недоступен: {{ refundUnavailableReason }}
+            </p>
           </div>
         </Card>
 

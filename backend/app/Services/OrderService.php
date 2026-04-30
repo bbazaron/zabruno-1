@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\OrderReceived;
 use App\Models\Order;
+use App\Models\PaymentRefund;
 use App\Models\Product;
 use App\Models\UserProduct;
 use App\Models\User;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class OrderService
@@ -502,6 +504,8 @@ class OrderService
         return match ($status) {
             'confirmed' => 'Оплачен',
             'pending_payment' => 'Ожидает подтверждения',
+            'partially_refunded' => 'Частично возвращён',
+            'refunded' => 'Возвращён',
             'payment_cancelled', 'cancelled' => 'Отменен',
             default => 'Не найден',
         };
@@ -664,6 +668,128 @@ class OrderService
         $order->update(['status' => $status]);
 
         return $order->fresh(['items', 'user']);
+    }
+
+    /**
+     * @return array{order: Order, refund: PaymentRefund, available_to_refund: string}
+     */
+    public function createAdminRefund(
+        int $orderId,
+        int $adminUserId,
+        float $amount,
+        string $reasonCode,
+        ?string $reasonComment = null,
+    ): array {
+        if ($amount <= 0) {
+            throw new \RuntimeException('Сумма возврата должна быть больше нуля');
+        }
+
+        return DB::transaction(function () use ($orderId, $adminUserId, $amount, $reasonCode, $reasonComment) {
+            /** @var Order|null $order */
+            $order = Order::query()->lockForUpdate()->find($orderId);
+            if ($order === null) {
+                throw new \RuntimeException('Заказ не найден');
+            }
+
+            if (! is_string($order->yookassa_payment_id) || $order->yookassa_payment_id === '') {
+                throw new \RuntimeException('У заказа нет платежа ЮKassa');
+            }
+            if ((string) $order->yookassa_payment_status !== 'succeeded') {
+                throw new \RuntimeException('Возврат доступен только для оплаченных заказов');
+            }
+
+            $totalAmount = round((float) $order->total_amount, 2);
+            $refundedAmount = round((float) ($order->refunded_amount ?? 0), 2);
+            $availableToRefund = round($totalAmount - $refundedAmount, 2);
+            $requestedAmount = round($amount, 2);
+
+            if ($requestedAmount - $availableToRefund > 0.01) {
+                throw new \RuntimeException('Сумма возврата превышает доступный лимит');
+            }
+
+            $amountFormatted = number_format($requestedAmount, 2, '.', '');
+            $idempotenceKey = (string) Str::uuid();
+
+            $refund = PaymentRefund::query()->create([
+                'order_id' => $order->id,
+                'created_by' => $adminUserId,
+                'yookassa_payment_id' => (string) $order->yookassa_payment_id,
+                'amount' => $amountFormatted,
+                'reason_code' => $reasonCode,
+                'reason_comment' => $reasonComment,
+                'status' => 'pending',
+                'idempotence_key' => $idempotenceKey,
+            ]);
+
+            Log::info('Admin refund: request started', [
+                'order_id' => $order->id,
+                'payment_id' => $order->yookassa_payment_id,
+                'refund_id' => $refund->id,
+                'amount' => $amountFormatted,
+                'reason_code' => $reasonCode,
+                'admin_user_id' => $adminUserId,
+                'idempotence_key' => $idempotenceKey,
+            ]);
+
+            try {
+                $gatewayRefund = $this->yooKassa->createRefund(
+                    (string) $order->yookassa_payment_id,
+                    $amountFormatted,
+                    'Возврат по заказу №'.$order->id,
+                    $idempotenceKey,
+                    [
+                        'order_id' => (string) $order->id,
+                        'refund_id' => (string) $refund->id,
+                        'reason_code' => $reasonCode,
+                    ],
+                );
+            } catch (\Throwable $e) {
+                $refund->update([
+                    'status' => 'failed',
+                    'gateway_response' => ['error' => $e->getMessage()],
+                ]);
+
+                Log::error('Admin refund: gateway call failed', [
+                    'order_id' => $order->id,
+                    'refund_id' => $refund->id,
+                    'amount' => $amountFormatted,
+                    'admin_user_id' => $adminUserId,
+                    'idempotence_key' => $idempotenceKey,
+                    'exception' => $e,
+                ]);
+
+                throw $e;
+            }
+
+            $refund->update([
+                'yookassa_refund_id' => $gatewayRefund['id'],
+                'status' => $gatewayRefund['status'],
+                'gateway_response' => $gatewayRefund,
+            ]);
+
+            $updatedRefundedAmount = round($refundedAmount + $requestedAmount, 2);
+            $isFullyRefunded = abs($totalAmount - $updatedRefundedAmount) <= 0.01;
+            $order->update([
+                'refunded_amount' => number_format($updatedRefundedAmount, 2, '.', ''),
+                'status' => $isFullyRefunded ? 'refunded' : 'partially_refunded',
+            ]);
+
+            Log::info('Admin refund: completed', [
+                'order_id' => $order->id,
+                'payment_id' => $order->yookassa_payment_id,
+                'refund_id' => $refund->id,
+                'gateway_refund_id' => $gatewayRefund['id'],
+                'amount' => $amountFormatted,
+                'status' => $gatewayRefund['status'],
+                'admin_user_id' => $adminUserId,
+            ]);
+
+            return [
+                'order' => $order->fresh(['items', 'user']),
+                'refund' => $refund->fresh(),
+                'available_to_refund' => number_format(max(0, $totalAmount - $updatedRefundedAmount), 2, '.', ''),
+            ];
+        });
     }
 
     /**
