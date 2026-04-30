@@ -189,7 +189,7 @@ async function loadKitSuggestions() {
     const response = await axios.get('/api/index', {
       params: {
         gender: childGender.value === 'boy' ? 'boys' : 'girls',
-        category: 'Комплекты',
+        category: 'sets',
       },
     })
 
