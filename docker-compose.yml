@@ -25,6 +25,37 @@ services:
     volumes:
       - ./backend:/var/www
       - /var/www/vendor
+      # На сервере: каталог для выгруженных медиа (создайте при отсутствии или закомментируйте локально)
+      - /var/www/agaforma-storage/public:/var/www/agaforma-storage/public
+    depends_on:
+      - db
+      - rabbitmq
+
+  # Очередь БД: письма OrderReceived (ORDER_MAIL_QUEUE=mail), см. .env.docker
+  worker-mail:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    env_file:
+      - .env.docker
+    volumes:
+      - ./backend:/var/www
+      - /var/www/vendor
+      - /var/www/agaforma-storage/public:/var/www/agaforma-storage/public
+    working_dir: /var/www
+    command:
+      - php
+      - artisan
+      - queue:work
+      - database
+      - --sleep=3
+      - --tries=3
+      - --max-time=3600
+      - --queue=mail,default
+    restart: unless-stopped
     depends_on:
       - db
       - rabbitmq
