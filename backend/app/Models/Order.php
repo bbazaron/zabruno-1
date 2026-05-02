@@ -39,6 +39,7 @@ class Order extends Model
         'refunded_amount',
         'yookassa_payment_id',
         'yookassa_payment_status',
+        'order_received_email_sent_at',
         'yookassa_idempotence_key',
     ];
 
@@ -49,6 +50,7 @@ class Order extends Model
             'terms_accepted' => 'boolean',
             'total_amount' => 'decimal:2',
             'refunded_amount' => 'decimal:2',
+            'order_received_email_sent_at' => 'datetime',
         ];
     }
 

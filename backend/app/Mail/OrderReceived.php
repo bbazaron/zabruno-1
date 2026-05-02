@@ -26,8 +26,12 @@ class OrderReceived extends Mailable implements ShouldQueue
 
     public function envelope(): Envelope
     {
+        $kind = strtolower((string) $this->order->order_type) === 'ready_to_wear'
+            ? 'готовая одежда'
+            : 'пошив на заказ';
+
         return new Envelope(
-            subject: 'Заказ №'.$this->order->id.' принят',
+            subject: 'Заказ №'.$this->order->id.' принят — '.$kind,
         );
     }
 

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Mail\OrderReceived;
 use App\Models\Order;
 use App\Models\PaymentRefund;
 use App\Models\Product;
@@ -13,7 +12,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -23,11 +21,13 @@ class OrderService
 {
     public function __construct(
         private YooKassaClient $yooKassa,
+        private OrderReceivedMailService $orderReceivedMail,
     ) {}
 
     /**
      * Создаёт заказ и платёж в ЮKassa в одной транзакции БД. При сбое API заказ откатывается.
-     * Письмо «заказ принят» ставится в очередь БД ({@see \App\Mail\OrderReceived}).
+     * Письмо «заказ принят» ставится в очередь после вебхука ЮKassa или сверки yookassa:reconcile при успешной оплате;
+     * при сумме 0 рублей — сразу после создании заказа ({@see OrderReceivedMailService}).
      *
      * @return array{order: Order, confirmation_url: string|null}
      */
@@ -74,7 +74,9 @@ class OrderService
             $confirmationUrl = $paymentData['confirmation_url'];
         }
 
-        $this->scheduleOrderReceivedEmail($order);
+        if ($amount <= 0) {
+            $this->orderReceivedMail->queueAfterCommit($order->id);
+        }
 
         return [
             'order' => $order,
@@ -197,7 +199,9 @@ class OrderService
             ->whereIn('id', $cartItems->pluck('id')->all())
             ->delete();
 
-        $this->scheduleOrderReceivedEmail($order);
+        if ($amount <= 0) {
+            $this->orderReceivedMail->queueAfterCommit($order->id);
+        }
 
         return [
             'order' => $order,
@@ -251,48 +255,6 @@ class OrderService
         }
 
         return $hasColumn;
-    }
-
-    private function scheduleOrderReceivedEmail(Order $order): void
-    {
-        $email = trim((string) $order->parent_email);
-        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return;
-        }
-
-        $orderId = $order->id;
-
-        DB::afterCommit(function () use ($email, $orderId): void {
-            $fresh = Order::query()->with('items')->find($orderId);
-            if ($fresh === null) {
-                Log::warning('Письмо о заказе не поставлено в очередь: заказ не найден после коммита', [
-                    'order_id' => $orderId,
-                ]);
-
-                return;
-            }
-
-            try {
-                Mail::to($email)->queue(new OrderReceived($fresh));
-            } catch (\Throwable $e) {
-                Log::error('Не удалось поставить в очередь БД письмо о принятом заказе', [
-                    'order_id' => $orderId,
-                    'queue_connection' => 'database',
-                    'exception' => $e,
-                ]);
-                report($e);
-
-                try {
-                    error_log(sprintf(
-                        'OrderReceived queue failed (order_id=%s, connection=database): %s',
-                        (string) $orderId,
-                        $e->getMessage()
-                    ));
-                } catch (\Throwable) {
-                    // ignore secondary failures
-                }
-            }
-        });
     }
 
     private function yookassaReturnUrl(Request $request): string

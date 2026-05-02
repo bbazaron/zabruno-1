@@ -19,6 +19,7 @@ class YooKassaClient
     public function __construct(
         private ?string $shopId,
         private ?string $secretKey,
+        private OrderReceivedMailService $orderReceivedMail,
     ) {}
 
     public function isConfigured(): bool
@@ -263,16 +264,42 @@ class YooKassaClient
         }
 
         $status = (string) (data_get($payment, 'status') ?? '');
-        $updates = ['yookassa_payment_status' => $status];
 
         if ($event === 'payment.succeeded' && $status === 'succeeded') {
-            $updates['status'] = 'confirmed';
-        }
-        if ($event === 'payment.canceled' || $status === 'canceled') {
-            $updates['status'] = 'payment_cancelled';
-        }
+            $claimed = Order::query()
+                ->whereKey($order->id)
+                ->where('yookassa_payment_id', $paymentId)
+                ->where('status', 'pending_payment')
+                ->whereNull('order_received_email_sent_at')
+                ->update([
+                    'status' => 'confirmed',
+                    'yookassa_payment_status' => $status,
+                    'order_received_email_sent_at' => now(),
+                ]);
 
-        $order->update($updates);
+            if ($claimed === 1) {
+                $this->orderReceivedMail->queueAfterCommit($order->id, true);
+            } else {
+                Order::query()
+                    ->whereKey($order->id)
+                    ->where('yookassa_payment_id', $paymentId)
+                    ->update(['yookassa_payment_status' => $status]);
+            }
+        } elseif ($event === 'payment.canceled' || $status === 'canceled') {
+            Order::query()
+                ->whereKey($order->id)
+                ->where('yookassa_payment_id', $paymentId)
+                ->where('status', 'pending_payment')
+                ->update([
+                    'yookassa_payment_status' => $status,
+                    'status' => 'payment_cancelled',
+                ]);
+        } else {
+            Order::query()
+                ->whereKey($order->id)
+                ->where('yookassa_payment_id', $paymentId)
+                ->update(['yookassa_payment_status' => $status]);
+        }
 
         Log::info('YooKassa webhook: order updated', [
             'event' => $event,

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Order;
+use App\Services\OrderReceivedMailService;
 use App\Services\YooKassaClient;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -13,7 +14,7 @@ class ReconcilePendingYooKassaPayments
         private readonly int $hoursBack = 24,
     ) {}
 
-    public function handle(YooKassaClient $yooKassa): void
+    public function handle(YooKassaClient $yooKassa, OrderReceivedMailService $orderReceivedMail): void
     {
         $from = Carbon::now()->subHours($this->hoursBack);
 
@@ -22,7 +23,7 @@ class ReconcilePendingYooKassaPayments
             ->whereNotNull('yookassa_payment_id')
             ->where('created_at', '>=', $from)
             ->orderBy('id')
-            ->chunkById(100, function ($orders) use ($yooKassa): void {
+            ->chunkById(100, function ($orders) use ($yooKassa, $orderReceivedMail): void {
                 foreach ($orders as $order) {
                     $paymentId = (string) $order->yookassa_payment_id;
                     if ($paymentId === '') {
@@ -39,14 +40,40 @@ class ReconcilePendingYooKassaPayments
                     }
 
                     $status = (string) (data_get($payment, 'status') ?? '');
-                    $updates = ['yookassa_payment_status' => $status];
-                    if ($status === 'succeeded') {
-                        $updates['status'] = 'confirmed';
-                    } elseif ($status === 'canceled') {
-                        $updates['status'] = 'payment_cancelled';
-                    }
 
-                    $order->update($updates);
+                    if ($status === 'succeeded') {
+                        $claimed = Order::query()
+                            ->whereKey($order->id)
+                            ->where('yookassa_payment_id', $paymentId)
+                            ->where('status', 'pending_payment')
+                            ->whereNull('order_received_email_sent_at')
+                            ->update([
+                                'status' => 'confirmed',
+                                'yookassa_payment_status' => $status,
+                                'order_received_email_sent_at' => now(),
+                            ]);
+
+                        if ($claimed === 1) {
+                            $orderReceivedMail->queueAfterCommit($order->id, true);
+                        } else {
+                            Order::query()->whereKey($order->id)->update([
+                                'yookassa_payment_status' => $status,
+                            ]);
+                        }
+                    } elseif ($status === 'canceled') {
+                        Order::query()
+                            ->whereKey($order->id)
+                            ->where('yookassa_payment_id', $paymentId)
+                            ->where('status', 'pending_payment')
+                            ->update([
+                                'yookassa_payment_status' => $status,
+                                'status' => 'payment_cancelled',
+                            ]);
+                    } else {
+                        Order::query()->whereKey($order->id)->update([
+                            'yookassa_payment_status' => $status,
+                        ]);
+                    }
                 }
             });
     }
