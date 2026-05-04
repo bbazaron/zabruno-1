@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateAdminOrderRequest;
 use App\Services\OrderService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -23,6 +24,15 @@ class OrderController extends Controller
             return response()->json([
                 'message' => $e->getMessage(),
             ], 422);
+        } catch (\Throwable $e) {
+            Log::warning('createOrder: payment step failed (order rolled back)', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Не удалось связаться с платёжной системой. Заказ не создан — попробуйте ещё раз.',
+            ], 503);
         }
 
         return response()->json([
@@ -60,6 +70,15 @@ class OrderController extends Controller
             return response()->json([
                 'message' => $e->getMessage(),
             ], 422);
+        } catch (\Throwable $e) {
+            Log::warning('createCartOrder: payment step failed (order rolled back)', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Не удалось связаться с платёжной системой. Заказ не создан — попробуйте ещё раз.',
+            ], 503);
         }
 
         return response()->json([

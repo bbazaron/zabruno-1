@@ -25,7 +25,8 @@ class OrderService
     ) {}
 
     /**
-     * Создаёт заказ и платёж в ЮKassa в одной транзакции БД. При сбое API заказ откатывается.
+     * Создаёт заказ и позиции в БД, затем создаёт платёж в ЮKassa. Вызов ЮKassa вне транзакции БД;
+     * при сбое создания платежа заказ удаляется, чтобы не оставалось «висящих» pending_payment.
      * Письмо «заказ принят» ставится в очередь после вебхука ЮKassa или сверки yookassa:reconcile при успешной оплате;
      * при сумме 0 рублей — сразу после создании заказа ({@see OrderReceivedMailService}).
      *
@@ -69,9 +70,15 @@ class OrderService
         $confirmationUrl = null;
 
         if ($amount > 0) {
-            $paymentData = $this->createPaymentForOrder($order, $returnUrl);
-            $order = $paymentData['order'];
-            $confirmationUrl = $paymentData['confirmation_url'];
+            try {
+                $paymentData = $this->createPaymentForOrder($order, $returnUrl);
+                $order = $paymentData['order'];
+                $confirmationUrl = $paymentData['confirmation_url'];
+            } catch (\Throwable $e) {
+                $order->delete();
+
+                throw $e;
+            }
         }
 
         if ($amount <= 0) {
@@ -190,9 +197,15 @@ class OrderService
         $confirmationUrl = null;
 
         if ($amount > 0) {
-            $paymentData = $this->createPaymentForOrder($order, $returnUrl);
-            $order = $paymentData['order'];
-            $confirmationUrl = $paymentData['confirmation_url'];
+            try {
+                $paymentData = $this->createPaymentForOrder($order, $returnUrl);
+                $order = $paymentData['order'];
+                $confirmationUrl = $paymentData['confirmation_url'];
+            } catch (\Throwable $e) {
+                $order->delete();
+
+                throw $e;
+            }
         }
 
         UserProduct::query()
