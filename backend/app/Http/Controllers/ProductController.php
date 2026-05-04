@@ -59,6 +59,7 @@ class ProductController extends Controller
                 'media' => $mediaUrls,
                 'gender' => $product->gender,
                 'category' => $product->category,
+                'color' => $product->color,
                 'price' => $product->price,
                 'original_price' => $product->original_price,
                 'in_stock' => $product->in_stock,

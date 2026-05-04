@@ -340,6 +340,13 @@ onMounted(() => {
               </span>
             </div>
           </div>
+          <div
+            v-if="order.kit_comment"
+            class="px-4 py-3 md:px-5 md:py-4 border-b border-neutral-100 text-sm text-slate-700"
+          >
+            <span class="text-slate-500">Комментарий к заказу:</span>
+            {{ order.kit_comment }}
+          </div>
 
           <div class="divide-y divide-neutral-100">
             <div
@@ -512,10 +519,6 @@ onMounted(() => {
               <div class="flex flex-col sm:flex-row sm:gap-2">
                 <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">Email</dt>
                 <dd class="break-all">{{ order.parent_email }}</dd>
-              </div>
-              <div class="flex flex-col sm:flex-row sm:gap-2">
-                <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">Населённый пункт</dt>
-                <dd>{{ order.settlement }}</dd>
               </div>
               <div v-if="order.messenger_max" class="flex flex-col sm:flex-row sm:gap-2">
                 <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">MAX</dt>
