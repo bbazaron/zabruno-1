@@ -37,6 +37,8 @@ class CartController extends Controller
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'quantity' => ['nullable', 'integer', 'min:1'],
             'selected_size' => ['required', 'string', 'in:XS,S,M,L,XL'],
+            'selected_color' => ['nullable', 'string', 'max:50'],
+            'selected_class' => ['nullable', 'string', 'max:32', 'regex:/^\d{1,2}\s*[А-ЯA-Z]$/u'],
         ]);
 
         try {
@@ -45,6 +47,8 @@ class CartController extends Controller
                 (int) $validated['product_id'],
                 (int) ($validated['quantity'] ?? 1),
                 (string) $validated['selected_size'],
+                isset($validated['selected_color']) ? (string) $validated['selected_color'] : null,
+                isset($validated['selected_class']) ? (string) $validated['selected_class'] : null,
             );
         } catch (\RuntimeException $e) {
             return response()->json([

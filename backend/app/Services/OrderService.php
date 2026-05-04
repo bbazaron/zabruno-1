@@ -59,6 +59,8 @@ class OrderService
                     'product_name' => $row['product_name'],
                     'quantity' => (int) $row['quantity'],
                     'size_override' => $row['size_override'] ?? null,
+                    'selected_color' => $row['selected_color'] ?? null,
+                    'selected_class' => $row['selected_class'] ?? null,
                     'line_comment' => $row['line_comment'] ?? null,
                 ]);
             }
@@ -130,6 +132,8 @@ class OrderService
                 'product_name' => (string) $product->name,
                 'quantity' => $qty,
                 'size_override' => $cartItem->selected_size,
+                'selected_color' => $cartItem->selected_color,
+                'selected_class' => $cartItem->selected_class,
             ];
         }
 
@@ -185,6 +189,8 @@ class OrderService
                     'product_name' => $line['product_name'],
                     'quantity' => $line['quantity'],
                     'size_override' => $line['size_override'],
+                    'selected_color' => $line['selected_color'] ?? null,
+                    'selected_class' => $line['selected_class'] ?? null,
                     'line_comment' => null,
                 ]);
             }
@@ -794,6 +800,8 @@ class OrderService
                     'product_name' => $row['product_name'],
                     'quantity' => (int) $row['quantity'],
                     'size_override' => $row['size_override'] ?? null,
+                    'selected_color' => $row['selected_color'] ?? null,
+                    'selected_class' => $row['selected_class'] ?? null,
                     'line_comment' => $row['line_comment'] ?? null,
                 ]);
             }

@@ -13,6 +13,8 @@ class OrderItem extends Model
         'product_name',
         'quantity',
         'size_override',
+        'selected_color',
+        'selected_class',
         'line_comment',
     ];
 

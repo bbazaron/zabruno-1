@@ -21,9 +21,14 @@ const selectedMedia = ref('') // ссылка на текущее главное
 const isMediaViewerOpen = ref(false)
 const activeMediaIndex = ref(0)
 const selectedSize = ref<'XS' | 'S' | 'M' | 'L' | 'XL'>('M')
+const selectedColor = ref('')
+const selectedClassNumber = ref('')
+const selectedClassLetter = ref('')
 const cartLoading = ref(false)
 const availableSizes: Array<'XS' | 'S' | 'M' | 'L' | 'XL'> = ['XS', 'S', 'M', 'L', 'XL']
-const cartBySize = ref<Record<string, number>>({})
+const availableClassNumbers = Array.from({ length: 11 }, (_, i) => String(i + 1))
+const availableClassLetters = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'К', 'Л', 'М']
+const cartByVariant = ref<Record<string, number>>({})
 
 async function fetchProduct() {
   try {
@@ -34,6 +39,8 @@ async function fetchProduct() {
     if (typeof product.value?.name === 'string' && product.value.name.trim()) {
       document.title = product.value.name.trim()
     }
+    const colorOptions = availableColors()
+    selectedColor.value = colorOptions[0] ?? ''
     selectedMedia.value = resolveBackendMediaUrl(product.value.image) // первое изображение по умолчанию
     await loadCartState()
   } catch (err) {
@@ -88,13 +95,39 @@ function getStoredToken(): string | null {
 }
 
 function cartQuantityForSelectedSize(): number {
-  return cartBySize.value[selectedSize.value] ?? 0
+  return cartByVariant.value[
+    cartVariantKey(selectedSize.value, selectedColor.value, selectedClassLabel())
+  ] ?? 0
+}
+
+function cartVariantKey(size: string, color: string, classLabel: string): string {
+  return `${size}|${color.trim().toLowerCase()}|${classLabel.trim().toUpperCase()}`
+}
+
+function availableColors(): string[] {
+  const raw = String(product.value?.color ?? '').trim()
+  if (!raw) return []
+  const parts = raw
+    .split(/[,;|\n]/g)
+    .map((item: string) => item.trim())
+    .filter(Boolean)
+  return Array.from(new Set(parts))
+}
+
+function selectedClassLabel(): string {
+  if (!selectedClassNumber.value || !selectedClassLetter.value) return ''
+  return `${selectedClassNumber.value}${selectedClassLetter.value}`
+}
+
+function resetSelectedClass(): void {
+  selectedClassNumber.value = ''
+  selectedClassLetter.value = ''
 }
 
 async function loadCartState() {
   const token = getStoredToken()
   if (!token || !product.value?.id) {
-    cartBySize.value = {}
+    cartByVariant.value = {}
     return
   }
 
@@ -113,13 +146,15 @@ async function loadCartState() {
       if (rowProductId !== Number(product.value.id)) continue
 
       const size = String(row?.selected_size ?? '').trim().toUpperCase()
+      const color = String(row?.selected_color ?? '').trim()
+      const classLabel = String(row?.selected_class ?? '').trim().toUpperCase()
       const quantity = Number(row?.quantity ?? 0)
       if (!availableSizes.includes(size as (typeof availableSizes)[number])) continue
 
-      nextState[size] = quantity > 0 ? quantity : 1
+      nextState[cartVariantKey(size, color, classLabel)] = quantity > 0 ? quantity : 1
     }
 
-    cartBySize.value = nextState
+    cartByVariant.value = nextState
   } catch {
     // no-op
   }
@@ -136,6 +171,14 @@ async function addToCartAction() {
     showToast('Товар не найден', 'error')
     return
   }
+  if (availableColors().length === 0) {
+    showToast('Для товара не настроены доступные цвета', 'error')
+    return
+  }
+  if (!selectedColor.value.trim()) {
+    showToast('Выберите цвет', 'error')
+    return
+  }
 
   cartLoading.value = true
   try {
@@ -145,6 +188,8 @@ async function addToCartAction() {
         product_id: Number(product.value.id),
         quantity: 1,
         selected_size: selectedSize.value,
+        selected_color: selectedColor.value.trim() || null,
+        selected_class: selectedClassLabel() || null,
       },
       {
         headers: {
@@ -198,6 +243,28 @@ async function addToCartAction() {
           <Typography as="p" variant="body" class="text-slate-600">
             {{ product.description }}
           </Typography>
+          <p v-if="product.season" class="text-sm text-slate-600">
+            Сезон: <span class="font-medium text-slate-900">{{ product.season }}</span>
+          </p>
+          <div v-if="availableColors().length > 0">
+            <p class="text-sm font-medium text-slate-700 mb-2">Цвет</p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="color in availableColors()"
+                :key="color"
+                type="button"
+                class="px-3 py-1.5 text-sm rounded-md border transition-colors"
+                :class="
+                  selectedColor === color
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-neutral-100'
+                "
+                @click="selectedColor = color"
+              >
+                {{ color }}
+              </button>
+            </div>
+          </div>
           <div>
             <p class="text-sm font-medium text-slate-700 mb-2">Размер</p>
             <div class="flex flex-wrap gap-2">
@@ -217,10 +284,45 @@ async function addToCartAction() {
               </button>
             </div>
           </div>
+          <div>
+            <p class="text-sm font-medium text-slate-700 mb-2">Надпись (необязательно)</p>
+            <div class="flex flex-wrap gap-2 items-center">
+              <select
+                v-model="selectedClassNumber"
+                class="px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white"
+              >
+                <option value="">Класс</option>
+                <option v-for="number in availableClassNumbers" :key="number" :value="number">
+                  {{ number }}
+                </option>
+              </select>
+              <select
+                v-model="selectedClassLetter"
+                class="px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white"
+              >
+                <option value="">Литера</option>
+                <option v-for="letter in availableClassLetters" :key="letter" :value="letter">
+                  {{ letter }}
+                </option>
+              </select>
+              <div v-if="selectedClassLabel()" class="flex items-center gap-2">
+                <span class="text-sm text-slate-600">
+                  Будет напечатано: <span class="font-medium text-slate-900">{{ selectedClassLabel() }}</span>
+                </span>
+                <button
+                  type="button"
+                  class="px-3 py-1.5 text-sm rounded-md border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                  @click="resetSelectedClass"
+                >
+                  Сброс
+                </button>
+              </div>
+            </div>
+          </div>
           <div class="text-2xl font-bold text-slate-900 mt-4">
             {{ product.price }} ₽
             <span
-                v-if="product.originalPrice > product.price"
+                v-if="product.originalPrice !== null && product.originalPrice !== undefined && product.originalPrice !== ''"
                 class="text-base line-through text-slate-500 ml-2"
             >
           {{ product.originalPrice }} ₽

@@ -94,6 +94,8 @@ class ProductController extends Controller
             'description' => $product->description,
             'price' => $product->price,
             'originalPrice' => $product->original_price,
+            'color' => $product->color,
+            'season' => $product->season,
             'category' => $product->category,
             'gender' => $product->gender,
             'image' => $primaryImage,

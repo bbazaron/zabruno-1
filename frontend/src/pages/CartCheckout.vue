@@ -11,6 +11,8 @@ interface CartItem {
   id: number
   quantity: number
   selected_size?: string | null
+  selected_color?: string | null
+  selected_class?: string | null
   product: {
     id: number
     name: string
@@ -364,6 +366,8 @@ onMounted(() => {
               <span class="text-slate-700">
                 {{ item.product?.name }} x{{ item.quantity }}
                 <span v-if="item.selected_size" class="text-slate-500">({{ item.selected_size }})</span>
+                <span v-if="item.selected_color" class="text-slate-500"> · {{ item.selected_color }}</span>
+                <span v-if="item.selected_class" class="text-slate-500"> · {{ item.selected_class }}</span>
               </span>
               <span class="text-slate-900">
                 {{ formatCurrency(Number(item.product?.price ?? 0) * item.quantity) }}

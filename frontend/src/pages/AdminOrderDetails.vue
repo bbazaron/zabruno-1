@@ -15,6 +15,8 @@ interface OrderItem {
   product_name: string
   quantity: number
   size_override?: string | null
+  selected_color?: string | null
+  selected_class?: string | null
   line_comment?: string | null
   unit_price?: string | number | null
   line_total?: string | number | null
@@ -66,6 +68,8 @@ interface ItemDraft {
   product_name: string
   quantity: number
   size_override: string
+  selected_color: string
+  selected_class: string
   line_comment: string
 }
 
@@ -328,6 +332,8 @@ function orderToDraft(o: AdminOrder): OrderDraft {
             product_name: i.product_name,
             quantity: i.quantity,
             size_override: i.size_override ?? '',
+            selected_color: i.selected_color ?? '',
+            selected_class: i.selected_class ?? '',
             line_comment: i.line_comment ?? '',
           }))
         : [
@@ -335,6 +341,8 @@ function orderToDraft(o: AdminOrder): OrderDraft {
               product_name: '',
               quantity: 1,
               size_override: '',
+              selected_color: '',
+              selected_class: '',
               line_comment: '',
             },
           ],
@@ -347,6 +355,8 @@ function buildPayload(d: OrderDraft) {
       product_name: i.product_name.trim(),
       quantity: Math.max(1, Math.floor(Number(i.quantity)) || 1),
       size_override: i.size_override.trim() || null,
+      selected_color: i.selected_color.trim() || null,
+      selected_class: i.selected_class.trim() || null,
       line_comment: i.line_comment.trim() || null,
     }))
     .filter((i) => i.product_name.length > 0)
@@ -394,6 +404,8 @@ function addDraftItem() {
     product_name: '',
     quantity: 1,
     size_override: '',
+    selected_color: '',
+    selected_class: '',
     line_comment: '',
   })
 }
@@ -849,6 +861,12 @@ onMounted(() => {
                   <p v-if="item.size_override" class="text-xs text-slate-600 mt-1">
                     Размер: {{ item.size_override }}
                   </p>
+                  <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
+                    Цвет: {{ item.selected_color }}
+                  </p>
+                  <p v-if="item.selected_class" class="text-xs text-slate-600 mt-1">
+                    Класс: {{ item.selected_class }}
+                  </p>
                   <p v-if="item.line_comment" class="text-xs text-slate-600 mt-1">
                     {{ item.line_comment }}
                   </p>
@@ -912,6 +930,14 @@ onMounted(() => {
                   <div>
                     <label class="block text-xs text-slate-500 mb-1">Размер (позиция)</label>
                     <input v-model="row.size_override" type="text" :class="inputClass" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Цвет</label>
+                    <input v-model="row.selected_color" type="text" :class="inputClass" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Класс</label>
+                    <input v-model="row.selected_class" type="text" :class="inputClass" />
                   </div>
                   <div class="sm:col-span-2">
                     <label class="block text-xs text-slate-500 mb-1">Комментарий к позиции</label>

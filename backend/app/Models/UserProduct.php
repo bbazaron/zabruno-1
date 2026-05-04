@@ -13,6 +13,8 @@ class UserProduct extends Model
         'user_id',
         'product_id',
         'selected_size',
+        'selected_color',
+        'selected_class',
         'quantity',
     ];
 

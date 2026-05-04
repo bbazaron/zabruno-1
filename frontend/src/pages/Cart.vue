@@ -13,6 +13,8 @@ interface CartItem {
   id: number
   quantity: number
   selected_size?: string | null
+  selected_color?: string | null
+  selected_class?: string | null
   product: {
     id: number
     name: string
@@ -280,6 +282,12 @@ onMounted(() => {
               </p>
               <p v-if="item.selected_size" class="text-xs text-slate-500 mt-1">
                 Размер: {{ item.selected_size }}
+              </p>
+              <p v-if="item.selected_color" class="text-xs text-slate-500 mt-1">
+                Цвет: {{ item.selected_color }}
+              </p>
+              <p v-if="item.selected_class" class="text-xs text-slate-500 mt-1">
+                Класс: {{ item.selected_class }}
               </p>
               <p class="text-slate-600 mt-1">
                 {{ formatCurrency(Number(item.product?.price ?? 0)) }}

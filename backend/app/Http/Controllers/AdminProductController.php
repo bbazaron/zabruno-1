@@ -29,7 +29,7 @@ class AdminProductController extends Controller
             'season' => 'nullable|string|max:50',
             'price' => 'required|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
-            'color' => 'nullable|string|max:50',
+            'color' => 'nullable|string|max:255',
             'image' => 'nullable|string|max:2048',
             'description' => 'nullable|string',
             'in_stock' => 'sometimes|boolean',
@@ -39,6 +39,9 @@ class AdminProductController extends Controller
 
         if (! array_key_exists('in_stock', $validated)) {
             $validated['in_stock'] = true;
+        }
+        if (array_key_exists('color', $validated)) {
+            $validated['color'] = $this->normalizeColorList($validated['color']);
         }
         $validated['image'] = $this->sanitizeImagePath($validated['image'] ?? null);
 
@@ -64,7 +67,7 @@ class AdminProductController extends Controller
             'season' => 'nullable|string|max:50',
             'price' => 'sometimes|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
-            'color' => 'nullable|string|max:50',
+            'color' => 'nullable|string|max:255',
             'image' => 'nullable|string|max:2048',
             'description' => 'nullable|string',
             'in_stock' => 'sometimes|boolean',
@@ -75,6 +78,9 @@ class AdminProductController extends Controller
         ]);
         if (array_key_exists('image', $validated)) {
             $validated['image'] = $this->sanitizeImagePath($validated['image']);
+        }
+        if (array_key_exists('color', $validated)) {
+            $validated['color'] = $this->normalizeColorList($validated['color']);
         }
 
         $product = DB::transaction(function () use ($request, $product, $validated) {
@@ -150,5 +156,31 @@ class AdminProductController extends Controller
         }
 
         return $value;
+    }
+
+    private function normalizeColorList(?string $raw): ?string
+    {
+        $value = trim((string) ($raw ?? ''));
+        if ($value === '') {
+            return null;
+        }
+
+        $parts = preg_split('/[,;|\n]+/u', $value) ?: [];
+        $normalized = [];
+        foreach ($parts as $part) {
+            $item = trim((string) $part);
+            if ($item === '') {
+                continue;
+            }
+            if (! in_array($item, $normalized, true)) {
+                $normalized[] = $item;
+            }
+        }
+
+        if ($normalized === []) {
+            return null;
+        }
+
+        return implode(', ', $normalized);
     }
 }

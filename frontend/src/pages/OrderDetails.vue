@@ -16,6 +16,8 @@ interface OrderItem {
   product_name: string
   quantity: number
   size_override?: string | null
+  selected_color?: string | null
+  selected_class?: string | null
   line_comment?: string | null
   unit_price?: string | number | null
   line_total?: string | number | null
@@ -401,6 +403,12 @@ onMounted(() => {
                 </p>
                 <p v-if="item.size_override" class="text-xs text-slate-600 mt-1">
                   Размер: {{ item.size_override }}
+                </p>
+                <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
+                  Цвет: {{ item.selected_color }}
+                </p>
+                <p v-if="item.selected_class" class="text-xs text-slate-600 mt-1">
+                  Класс: {{ item.selected_class }}
                 </p>
                 <p v-if="item.line_comment" class="text-xs text-slate-600 mt-1">
                   <span class="text-slate-500">Комментарий: </span>{{ item.line_comment }}

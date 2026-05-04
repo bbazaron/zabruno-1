@@ -38,6 +38,8 @@ class EstimateOrderTotalRequest extends FormRequest
                     'product_name' => $row['product_name'] ?? $row['productName'] ?? '',
                     'quantity' => $row['quantity'] ?? 1,
                     'size_override' => $row['size_override'] ?? $row['sizeOverride'] ?? null,
+                    'selected_color' => $row['selected_color'] ?? $row['selectedColor'] ?? null,
+                    'selected_class' => $row['selected_class'] ?? $row['selectedClass'] ?? null,
                     'line_comment' => $row['line_comment'] ?? $row['lineComment'] ?? null,
                 ];
             }

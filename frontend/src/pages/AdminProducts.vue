@@ -47,7 +47,8 @@ const formGender = ref<'boys' | 'girls'>('boys')
 const formSeason = ref('')
 const formPrice = ref('')
 const formOriginalPrice = ref('')
-const formColor = ref('')
+const formColors = ref<string[]>([])
+const colorDraft = ref('')
 const formMediaFiles = ref<File[]>([])
 const existingMedia = ref<Array<{ id: number; path: string; sort_order: number }>>([])
 const removeMediaIds = ref<number[]>([])
@@ -99,7 +100,8 @@ function resetForm() {
   formSeason.value = ''
   formPrice.value = ''
   formOriginalPrice.value = ''
-  formColor.value = ''
+  formColors.value = []
+  colorDraft.value = ''
   formMediaFiles.value = []
   existingMedia.value = []
   removeMediaIds.value = []
@@ -117,7 +119,8 @@ function fillForm(p: AdminProduct) {
   formPrice.value = String(p.price ?? '')
   formOriginalPrice.value =
     p.original_price != null && p.original_price !== '' ? String(p.original_price) : ''
-  formColor.value = p.color ?? ''
+  formColors.value = parseColorList(p.color)
+  colorDraft.value = ''
   formMediaFiles.value = []
   existingMedia.value = Array.isArray(p.media) ? [...p.media].sort((a, b) => a.sort_order - b.sort_order) : []
   removeMediaIds.value = []
@@ -138,10 +141,43 @@ function buildPayload(): Record<string, string | number | boolean | null> {
     season: formSeason.value.trim() || null,
     price: Number.isFinite(price) ? price : 0,
     original_price: original != null && Number.isFinite(original) ? original : null,
-    color: formColor.value.trim() || null,
+    color: formColors.value.length > 0 ? formColors.value.join(', ') : null,
     description: formDescription.value.trim() || null,
     in_stock: formInStock.value,
   }
+}
+
+function parseColorList(raw: string | null | undefined): string[] {
+  const value = String(raw ?? '').trim()
+  if (!value) return []
+  return Array.from(
+    new Set(
+      value
+        .split(/[,;|\n]/g)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
+function addColorFromDraft() {
+  const next = colorDraft.value.trim()
+  if (!next) return
+  if (formColors.value.includes(next)) {
+    colorDraft.value = ''
+    return
+  }
+  formColors.value = [...formColors.value, next]
+  colorDraft.value = ''
+}
+
+function onColorDraftEnter(event: KeyboardEvent) {
+  event.preventDefault()
+  addColorFromDraft()
+}
+
+function removeColor(index: number) {
+  formColors.value = formColors.value.filter((_, idx) => idx !== index)
 }
 
 function onMediaFilesChange(event: Event) {
@@ -400,7 +436,39 @@ onMounted(() => {
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-color">Цвет</label>
-            <input id="ap-color" v-model="formColor" type="text" :class="inputClass" placeholder="Необязательно" />
+            <div class="space-y-2">
+              <div class="flex gap-2">
+                <input
+                  id="ap-color"
+                  v-model="colorDraft"
+                  type="text"
+                  :class="inputClass"
+                  placeholder="Например: Бордовый"
+                  @keydown.enter="onColorDraftEnter"
+                />
+                <Button type="button" variant="outline" @click="addColorFromDraft">Добавить</Button>
+              </div>
+              <div v-if="formColors.length > 0" class="flex flex-wrap gap-2">
+                <span
+                  v-for="(color, idx) in formColors"
+                  :key="`${color}-${idx}`"
+                  class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+                >
+                  {{ color }}
+                  <button
+                    type="button"
+                    class="text-slate-500 hover:text-red-600"
+                    aria-label="Удалить цвет"
+                    @click="removeColor(idx)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+              <p class="text-xs text-slate-500">
+                Пользователь сможет выбрать только эти цвета на странице товара.
+              </p>
+            </div>
           </div>
           <div class="md:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-2">Изображения товара</label>

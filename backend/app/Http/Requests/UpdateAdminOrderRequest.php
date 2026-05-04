@@ -41,6 +41,8 @@ class UpdateAdminOrderRequest extends FormRequest
             'items.*.product_name' => 'required|string|max:255',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.size_override' => 'nullable|string|max:255',
+            'items.*.selected_color' => 'nullable|string|max:50',
+            'items.*.selected_class' => 'nullable|string|max:32',
             'items.*.line_comment' => 'nullable|string|max:255',
 
             'kit_comment' => 'nullable|string|max:5000',

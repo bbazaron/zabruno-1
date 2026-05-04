@@ -64,6 +64,8 @@ class StoreOrderRequest extends FormRequest
                     'product_name' => $row['product_name'] ?? $row['productName'] ?? '',
                     'quantity' => $row['quantity'] ?? 1,
                     'size_override' => $row['size_override'] ?? $row['sizeOverride'] ?? null,
+                    'selected_color' => $row['selected_color'] ?? $row['selectedColor'] ?? null,
+                    'selected_class' => $row['selected_class'] ?? $row['selectedClass'] ?? null,
                     'line_comment' => $row['line_comment'] ?? $row['lineComment'] ?? null,
                 ];
             }
@@ -124,6 +126,8 @@ class StoreOrderRequest extends FormRequest
             'items.*.product_name' => 'required|string|max:255',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.size_override' => 'nullable|string|max:255',
+            'items.*.selected_color' => 'nullable|string|max:50',
+            'items.*.selected_class' => 'nullable|string|max:32',
             'items.*.line_comment' => 'nullable|string|max:255',
 
             'kit_comment' => 'nullable|string|max:5000',
