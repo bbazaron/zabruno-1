@@ -207,4 +207,47 @@ class OrderController extends Controller
             'available_to_refund' => $result['available_to_refund'],
         ]);
     }
+
+    public function deleteMyOrder(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        if ($user === null) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        try {
+            $deleted = $this->orderService->deleteOrderForUser((int) $user->id, $id);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        if (! $deleted) {
+            return response()->json([
+                'message' => 'Заказ не найден',
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Заказ удалён',
+        ]);
+    }
+
+    public function deleteAdminOrder(int $id): JsonResponse
+    {
+        $deleted = $this->orderService->deleteOrderForAdmin($id);
+
+        if (! $deleted) {
+            return response()->json([
+                'message' => 'Заказ не найден',
+            ], 404);
+        }
+
+        return response()->json([
+            'message' => 'Заказ удалён',
+        ]);
+    }
 }

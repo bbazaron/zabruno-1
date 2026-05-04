@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Header from '../components/sections/Header.vue'
@@ -31,6 +31,18 @@ const form = ref({
   comment: '',
 })
 
+const formError = ref('')
+const submitError = ref('')
+
+watch(
+  form,
+  () => {
+    formError.value = ''
+    submitError.value = ''
+  },
+  { deep: true },
+)
+
 function normalizeRuPhoneInput(raw: string): string {
   const digits = raw.replace(/\D/g, '')
   if (digits.length === 0) return '+7'
@@ -39,6 +51,11 @@ function normalizeRuPhoneInput(raw: string): string {
   if (!core.startsWith('7')) core = `7${core}`
   core = core.slice(0, 11)
   return `+${core}`
+}
+
+function isRuPhoneComplete(phone: string): boolean {
+  const d = phone.replace(/\D/g, '')
+  return d.length === 11 && d.startsWith('7')
 }
 
 function digitsAfterSeven(phone: string): string {
@@ -157,6 +174,41 @@ function formatCurrency(value: number): string {
   }).format(value)
 }
 
+function formatApiError(err: unknown): string {
+  const e = err as {
+    response?: { data?: { message?: string; errors?: Record<string, string[]> } }
+  }
+  const data = e.response?.data
+  if (!data) return 'Не удалось оформить заказ. Проверьте соединение.'
+  if (typeof data.message === 'string') return data.message
+  if (data.errors) {
+    return Object.values(data.errors).flat().join(' ')
+  }
+  return 'Ошибка при оформлении заказа'
+}
+
+function validateForm(): boolean {
+  formError.value = ''
+  if (!form.value.parent_full_name.trim()) {
+    formError.value = 'Заполните имя'
+    return false
+  }
+  if (!isRuPhoneComplete(form.value.parent_phone)) {
+    formError.value = 'Введите полный номер: +7 и 10 цифр'
+    return false
+  }
+  const em = form.value.parent_email.trim()
+  if (!em) {
+    formError.value = 'Укажите почту'
+    return false
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
+    formError.value = 'Укажите корректный email'
+    return false
+  }
+  return true
+}
+
 async function loadData() {
   const token = getStoredToken()
   if (!token) {
@@ -186,13 +238,17 @@ async function loadData() {
 }
 
 async function submitOrder() {
+  submitError.value = ''
   const token = getStoredToken()
   if (!token) {
     router.push('/login')
     return
   }
   if (!items.value.length) {
-    showToast('Корзина пуста', 'error')
+    formError.value = 'Корзина пуста'
+    return
+  }
+  if (!validateForm()) {
     return
   }
 
@@ -210,9 +266,8 @@ async function submitOrder() {
 
     showToast('Заказ оформлен', 'success')
     router.push('/orders')
-  } catch (err: any) {
-    const message = String(err?.response?.data?.message ?? '').trim()
-    showToast(message || 'Не удалось оформить заказ', 'error')
+  } catch (err: unknown) {
+    submitError.value = formatApiError(err)
   } finally {
     submitting.value = false
   }
@@ -233,6 +288,27 @@ onMounted(() => {
       <div v-if="loading" class="mt-8 text-slate-600">Загрузка...</div>
       <div v-else class="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <section class="lg:col-span-2 rounded-xl border border-neutral-200 bg-white p-5 space-y-4">
+          <div
+            v-if="formError"
+            class="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+            role="alert"
+          >
+            <svg
+              class="h-5 w-5 shrink-0 text-red-600 mt-0.5"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p class="min-w-0 leading-relaxed">{{ formError }}</p>
+          </div>
           <div>
             <label class="block text-sm text-slate-600 mb-1">
               Имя <span class="text-red-600" aria-hidden="true">*</span>
@@ -298,6 +374,27 @@ onMounted(() => {
             <p class="text-slate-600">Итого</p>
             <p class="text-2xl font-bold text-slate-900">{{ formatCurrency(totalAmount) }}</p>
           </div>
+          <div
+            v-if="submitError"
+            class="mt-4 flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+            role="alert"
+          >
+            <svg
+              class="h-5 w-5 shrink-0 text-red-600 mt-0.5"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <p class="min-w-0 leading-relaxed">{{ submitError }}</p>
+          </div>
           <Button class="w-full mt-4" :disabled="submitting || items.length === 0" @click="submitOrder">
             {{ submitting ? 'Оформление...' : 'Оплатить и оформить' }}
           </Button>
@@ -307,7 +404,7 @@ onMounted(() => {
         v-if="!loading"
         class="mt-6 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-slate-700 leading-relaxed"
       >
-        Получение заказа по адресу: пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16
+        Получение заказа по адресу: пгт. Агинское, ул. Цыбикова 6в, магазин Руно
       </p>
     </main>
     <Footer />

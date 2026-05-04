@@ -1575,7 +1575,7 @@ const summaryLines = computed(() => {
               variant="body"
               class="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-slate-700 leading-relaxed"
             >
-              Получение заказа по адресу: пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16
+              Получение заказа по адресу: пгт. Агинское, ул. Цыбикова 6в, магазин Руно
 
             </Typography>
             <div

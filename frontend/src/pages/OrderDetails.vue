@@ -75,6 +75,7 @@ const itemImageByLineId = computed(() => {
 
 const loading = ref(false)
 const order = ref<OrderDetails | null>(null)
+const deletingOrder = ref(false)
 const isReadyToWearOrder = computed(
   () => String(order.value?.order_type ?? '').toLowerCase() === 'ready_to_wear',
 )
@@ -124,7 +125,7 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-const PICKUP_ADDRESS = 'пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16'
+const PICKUP_ADDRESS = 'пгт. Агинское, ул. Цыбикова 6в, магазин Руно'
 
 function pickupLabel(_o: OrderDetails): string {
   return PICKUP_ADDRESS
@@ -158,6 +159,41 @@ function statusBadge(status: string): { label: string; class: string } {
       class: 'bg-neutral-100 text-neutral-800 border-neutral-200',
     }
   )
+}
+
+function userCanDeleteOrder(status: string): boolean {
+  return String(status).toLowerCase().replace(/\s+/g, '_') === 'pending_payment'
+}
+
+async function deleteMyOrderFromDetail() {
+  const o = order.value
+  if (!o || !userCanDeleteOrder(o.status)) return
+  if (
+    !window.confirm(`Удалить заказ №${o.id}? Это действие нельзя отменить.`)
+  ) {
+    return
+  }
+  const token = getStoredToken()
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  deletingOrder.value = true
+  try {
+    await axios.delete(`/api/orders/${o.id}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    showToast('Заказ удалён', 'success')
+    router.push('/orders')
+  } catch (err: any) {
+    const msg = err?.response?.data?.message
+    showToast(typeof msg === 'string' ? msg : 'Не удалось удалить заказ', 'error')
+  } finally {
+    deletingOrder.value = false
+  }
 }
 
 async function loadOrderDetails() {
@@ -232,9 +268,23 @@ onMounted(() => {
             Подробности заказа и данные для пошива
           </Typography>
         </div>
-        <Button variant="secondary" size="md" class="shrink-0 self-start" @click="router.push('/orders')">
-          К списку заказов
-        </Button>
+        <div class="flex flex-col sm:flex-row gap-2 shrink-0 self-start">
+          <Button variant="secondary" size="md" @click="router.push('/orders')">
+            К списку заказов
+          </Button>
+          <Button
+            v-if="order && userCanDeleteOrder(order.status)"
+            type="button"
+            variant="outline"
+            size="md"
+            class="border-red-200 text-red-700 hover:bg-red-50"
+            :disabled="deletingOrder"
+            :aria-busy="deletingOrder"
+            @click="deleteMyOrderFromDetail"
+          >
+            {{ deletingOrder ? 'Удаление…' : 'Удалить заказ' }}
+          </Button>
+        </div>
       </div>
     </div>
   </section>
@@ -283,7 +333,7 @@ onMounted(() => {
             <div class="flex items-start gap-2 text-slate-600">
               <MapPin :size="18" class="text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
               <span>
-                <span class="text-slate-500">Получение:</span>
+                <span class="text-slate-500">Получение заказа по адресу:</span>
                 <span class="text-sky-700 font-medium">{{ pickupLabel(order) }}</span>
               </span>
             </div>

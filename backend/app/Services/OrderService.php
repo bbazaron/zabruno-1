@@ -788,4 +788,42 @@ class OrderService
             return $order->fresh(['items', 'user']);
         });
     }
+
+    /**
+     * Удаление заказа владельцем: только при статусе pending_payment («Ожидает» в ЛК).
+     *
+     * @throws \RuntimeException если статус не подходит
+     */
+    public function deleteOrderForUser(int $userId, int $orderId): bool
+    {
+        $order = Order::query()
+            ->where('user_id', $userId)
+            ->whereKey($orderId)
+            ->first();
+
+        if ($order === null) {
+            return false;
+        }
+
+        if ($order->status !== 'pending_payment') {
+            throw new \RuntimeException('Удалить можно только заказ со статусом «Ожидает»');
+        }
+
+        return (bool) DB::transaction(function () use ($order) {
+            return $order->delete();
+        });
+    }
+
+    public function deleteOrderForAdmin(int $orderId): bool
+    {
+        $order = Order::query()->find($orderId);
+
+        if ($order === null) {
+            return false;
+        }
+
+        return (bool) DB::transaction(function () use ($order) {
+            return $order->delete();
+        });
+    }
 }

@@ -125,6 +125,7 @@ const ORDER_STATUSES = [
 const selectedStatus = ref<string>('pending')
 const savingStatus = ref(false)
 const refunding = ref(false)
+const deletingEntireOrder = ref(false)
 const refundAmount = ref<string>('')
 const refundReasonCode = ref<string>('customer_request')
 const refundReasonComment = ref<string>('')
@@ -226,7 +227,7 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-const PICKUP_ADDRESS = 'пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16'
+const PICKUP_ADDRESS = 'пгт. Агинское, ул. Цыбикова 6в, магазин Руно'
 
 function pickupLabel(_o: OrderDetails): string {
   return PICKUP_ADDRESS
@@ -562,6 +563,38 @@ async function submitRefund() {
   }
 }
 
+async function confirmDeleteAdminOrder() {
+  if (!order.value) return
+  if (
+    !window.confirm(
+      `Удалить заказ №${orderId.value} безвозвратно? Позиции и связанные данные будут удалены.`,
+    )
+  ) {
+    return
+  }
+  const token = getStoredToken()
+  if (!token) {
+    showToast('Нет доступа', 'error')
+    return
+  }
+  deletingEntireOrder.value = true
+  try {
+    await axios.delete(`/api/admin/orders/${orderId.value}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    showToast('Заказ удалён', 'success')
+    router.push('/admin/orders')
+  } catch (err: any) {
+    const msg = err?.response?.data?.message
+    showToast(typeof msg === 'string' ? msg : 'Не удалось удалить заказ', 'error')
+  } finally {
+    deletingEntireOrder.value = false
+  }
+}
+
 onMounted(() => {
   void loadProducts()
   loadOrder()
@@ -659,6 +692,18 @@ onMounted(() => {
                   Отмена
                 </Button>
               </template>
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                class="border-red-200 text-red-700 hover:bg-red-50"
+                :disabled="deletingEntireOrder || editMode"
+                :aria-busy="deletingEntireOrder"
+                @click="confirmDeleteAdminOrder"
+              >
+                <Trash2 :size="18" class="inline shrink-0 mr-1.5 -translate-y-px" aria-hidden="true" />
+                {{ deletingEntireOrder ? 'Удаление…' : 'Удалить заказ' }}
+              </Button>
             </div>
           </div>
           <div class="mt-4 border-t border-neutral-100 pt-4">
@@ -748,7 +793,7 @@ onMounted(() => {
               <div class="flex items-start gap-2 text-slate-600">
                 <MapPin :size="18" class="text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>
-                  <span class="text-slate-500">Получение:</span>
+                  <span class="text-slate-500">Получение заказа по адресу:</span>
                   <span class="text-sky-700 font-medium">{{ pickupLabel(order) }}</span>
                 </span>
               </div>

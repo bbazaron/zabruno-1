@@ -21,6 +21,7 @@ const password = ref('')
 const confirmPassword = ref('')
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
+const personalDataConsent = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 
@@ -48,6 +49,10 @@ async function registerUser() {
   }
   if (password.value !== confirmPassword.value) {
     errorMessage.value = 'Пароли не совпадают'
+    return
+  }
+  if (!personalDataConsent.value) {
+    errorMessage.value = 'Необходимо согласие на обработку персональных данных'
     return
   }
 
@@ -235,6 +240,19 @@ async function registerUser() {
                 </svg>
               </button>
             </div>
+          </div>
+
+          <div class="flex items-start gap-2.5">
+            <input
+              id="sign-up-pd-consent"
+              v-model="personalDataConsent"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 shrink-0 rounded border border-neutral-300 text-slate-900 focus:ring-2 focus:ring-slate-500"
+            />
+            <label for="sign-up-pd-consent" class="text-sm text-slate-700 leading-snug cursor-pointer">
+              Даю согласие на обработку персональных данных
+              <span class="text-red-600" aria-hidden="true">*</span>
+            </label>
           </div>
 
           <div v-if="errorMessage" class="text-red-600 text-sm">

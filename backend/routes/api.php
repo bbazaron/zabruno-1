@@ -7,11 +7,6 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\YooKassaController;
 use Illuminate\Support\Facades\Route;
-
-Route::get('/test', function () {
-    return response()->json(['message' => 'API works']);
-});
-
 Route::post('/register', [UserController::class, 'register']);
 Route::post('/login', [UserController::class, 'login']);
 
@@ -20,6 +15,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/getUser', [UserController::class, 'getUser']);
     Route::put('/updateProfile', [UserController::class, 'updateProfile']);
     Route::get('/getOrders', [OrderController::class, 'getOrders']);
+    Route::get('/payment/status/latest', [OrderController::class, 'latestPaymentStatus']);
+    Route::delete('/orders/{id}', [OrderController::class, 'deleteMyOrder']);
     Route::post('/createCartOrder', [OrderController::class, 'createCartOrder']);
     Route::get('/cart', [CartController::class, 'index']);
     Route::post('/cart/add', [CartController::class, 'add']);
@@ -32,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/admin/orders/{id}', [OrderController::class, 'getAdminOrderById']);
         Route::patch('/admin/orders/{id}', [OrderController::class, 'updateAdminOrder']);
         Route::patch('/admin/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus']);
+        Route::delete('/admin/orders/{id}', [OrderController::class, 'deleteAdminOrder']);
         Route::post('/admin/orders/{id}/refunds', [OrderController::class, 'createAdminRefund']);
 
         Route::get('/admin/products', [AdminProductController::class, 'index']);
@@ -48,7 +46,6 @@ Route::post('/yookassa/webhook', [YooKassaController::class, 'handle'])->middlew
 
 Route::get('/index', [ProductController::class, 'index']);
 Route::get('/product/{id}', [ProductController::class, 'getProductPage']);
-Route::middleware('auth:sanctum')->get('/payment/status/latest', [OrderController::class, 'latestPaymentStatus']);
 
 Route::post('/createOrder', [OrderController::class, 'createOrder']);
 Route::post('/orderEstimateTotal', [OrderController::class, 'estimateOrderTotal']);

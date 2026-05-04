@@ -16,6 +16,7 @@ import {
   Package,
   Info,
   Search,
+  Trash2,
 } from 'lucide-vue-next'
 
 interface BackendOrder {
@@ -70,6 +71,7 @@ const userLoading = ref(false)
 const ordersLoading = ref(false)
 const orders = ref<BackendOrder[]>([])
 const expandedByOrderId = ref<Record<number, boolean>>({})
+const deletingOrderId = ref<number | null>(null)
 
 /** Фильтры списка заказов */
 const filterOrderOrPhone = ref('')
@@ -237,7 +239,7 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-const PICKUP_ADDRESS = 'пгт. Агинское, с Хусатуй, ул. Хусатуй, д.16'
+const PICKUP_ADDRESS = 'пгт. Агинское, ул. Цыбикова 6в, магазин Руно'
 
 function pickupLabel(_order: BackendOrder): string {
   return PICKUP_ADDRESS
@@ -268,6 +270,43 @@ function statusBadge(status: string): { label: string; class: string } {
 
 function openOrder(orderId: number) {
   router.push(`/orders/${orderId}`)
+}
+
+function userCanDeleteOrder(status: string): boolean {
+  return String(status).toLowerCase().replace(/\s+/g, '_') === 'pending_payment'
+}
+
+async function deleteMyOrder(order: BackendOrder) {
+  if (!userCanDeleteOrder(order.status)) return
+  if (
+    !window.confirm(`Удалить заказ №${order.id}? Это действие нельзя отменить.`)
+  ) {
+    return
+  }
+  const token = getStoredToken()
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  deletingOrderId.value = order.id
+  try {
+    await axios.delete(`/api/orders/${order.id}`, {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    showToast('Заказ удалён', 'success')
+    const nextExpanded = { ...expandedByOrderId.value }
+    delete nextExpanded[order.id]
+    expandedByOrderId.value = nextExpanded
+    orders.value = orders.value.filter((o) => o.id !== order.id)
+  } catch (err: any) {
+    const msg = err?.response?.data?.message
+    showToast(typeof msg === 'string' ? msg : 'Не удалось удалить заказ', 'error')
+  } finally {
+    deletingOrderId.value = null
+  }
 }
 
 function goToProfile() {
@@ -463,7 +502,7 @@ onMounted(() => {
               <div class="flex items-start gap-2 text-slate-600">
                 <MapPin :size="18" class="text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
                 <span>
-                  <span class="text-slate-500">Получение:</span>
+                  <span class="text-slate-500">Получение заказа по адресу:</span>
                   <span class="text-sky-700 font-medium">{{ pickupLabel(order) }}</span>
                 </span>
               </div>
@@ -556,9 +595,27 @@ onMounted(() => {
           <div
             class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-4 py-4 md:px-5 md:py-4 border-t border-neutral-100 bg-neutral-50/60"
           >
-            <div class="flex gap-2 shrink-0">
+            <div class="flex flex-wrap gap-2 shrink-0">
               <Button variant="primary" size="sm" @click.stop="openOrder(order.id)">
                 Подробнее
+              </Button>
+              <Button
+                v-if="userCanDeleteOrder(order.status)"
+                type="button"
+                variant="outline"
+                size="sm"
+                class="border-red-200 text-red-700 hover:bg-red-50"
+                :disabled="deletingOrderId === order.id"
+                :aria-busy="deletingOrderId === order.id"
+                @click.stop="deleteMyOrder(order)"
+              >
+                <Trash2
+                  v-if="deletingOrderId !== order.id"
+                  :size="16"
+                  class="inline shrink-0 mr-1"
+                  aria-hidden="true"
+                />
+                {{ deletingOrderId === order.id ? 'Удаление…' : 'Удалить' }}
               </Button>
             </div>
             <p class="text-base md:text-lg font-bold text-slate-900 tabular-nums text-right">
