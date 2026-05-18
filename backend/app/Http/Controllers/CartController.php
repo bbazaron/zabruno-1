@@ -36,8 +36,8 @@ class CartController extends Controller
         $validated = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'quantity' => ['nullable', 'integer', 'min:1'],
-            'selected_size' => ['required', 'string', 'in:XS,S,M,L,XL'],
-            'selected_color' => ['nullable', 'string', 'max:50'],
+            'selected_size' => ['nullable', 'string', 'max:16'],
+            'selected_color' => ['nullable', 'string', 'max:255'],
             'selected_class' => ['nullable', 'string', 'max:32', 'regex:/^\d{1,2}\s*[А-ЯA-Z]$/u'],
         ]);
 
@@ -46,7 +46,7 @@ class CartController extends Controller
                 $user->id,
                 (int) $validated['product_id'],
                 (int) ($validated['quantity'] ?? 1),
-                (string) $validated['selected_size'],
+                isset($validated['selected_size']) ? (string) $validated['selected_size'] : null,
                 isset($validated['selected_color']) ? (string) $validated['selected_color'] : null,
                 isset($validated['selected_class']) ? (string) $validated['selected_class'] : null,
             );

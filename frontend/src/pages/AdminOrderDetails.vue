@@ -7,6 +7,7 @@ import Footer from '../components/sections/Footer.vue'
 import Card from '../components/ui/Card.vue'
 import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
+import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
 import { Phone, MapPin, Package, Info, Trash2, Plus } from 'lucide-vue-next'
 
@@ -53,6 +54,7 @@ interface OrderDetails {
   recipient_is_customer: boolean
   recipient_name?: string | null
   recipient_phone: string
+  pickup_address?: string | null
   items: OrderItem[]
 }
 
@@ -96,6 +98,7 @@ interface OrderDraft {
   recipient_is_customer: boolean
   recipient_name: string
   recipient_phone: string
+  pickup_address: string
   items: ItemDraft[]
 }
 
@@ -103,6 +106,7 @@ const route = useRoute()
 const router = useRouter()
 const { showToast } = useToast()
 const { loadProducts, resolveProductId, resolveProductImage, products } = useProductLinkResolver()
+const { loadDefaultPickupAddress, pickupLabelForOrder } = usePickupAddress()
 
 const loading = ref(false)
 const order = ref<AdminOrder | null>(null)
@@ -231,10 +235,8 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-const PICKUP_ADDRESS = 'пгт. Агинское, ул. Цыбикова 6в, магазин Руно'
-
-function pickupLabel(_o: OrderDetails): string {
-  return PICKUP_ADDRESS
+function pickupLabel(o: OrderDetails): string {
+  return pickupLabelForOrder(o)
 }
 
 function childGenderLabel(g: string): string {
@@ -326,6 +328,7 @@ function orderToDraft(o: AdminOrder): OrderDraft {
     recipient_is_customer: normalizeRecipientIsCustomer(o.recipient_is_customer),
     recipient_name: o.recipient_name ?? '',
     recipient_phone: o.recipient_phone ?? '',
+    pickup_address: pickupLabelForOrder(o),
     items:
       o.items?.length > 0
         ? o.items.map((i) => ({
@@ -384,6 +387,7 @@ function buildPayload(d: OrderDraft) {
     recipient_is_customer: d.recipient_is_customer,
     recipient_name: d.recipient_is_customer ? null : d.recipient_name.trim() || null,
     recipient_phone: d.recipient_phone.trim(),
+    pickup_address: d.pickup_address.trim(),
     items,
   }
 }
@@ -609,6 +613,7 @@ async function confirmDeleteAdminOrder() {
 
 onMounted(() => {
   void loadProducts()
+  void loadDefaultPickupAddress()
   loadOrder()
 })
 </script>
@@ -869,7 +874,7 @@ onMounted(() => {
                     Размер: {{ item.size_override }}
                   </p>
                   <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
-                    Цвет: {{ item.selected_color }}
+                    Школа / цвет: {{ item.selected_color }}
                   </p>
                   <p v-if="item.selected_class" class="text-xs text-slate-600 mt-1">
                     Класс: {{ item.selected_class }}
@@ -939,7 +944,7 @@ onMounted(() => {
                     <input v-model="row.size_override" type="text" :class="inputClass" />
                   </div>
                   <div>
-                    <label class="block text-xs text-slate-500 mb-1">Цвет</label>
+                    <label class="block text-xs text-slate-500 mb-1">Школа / цвет</label>
                     <input v-model="row.selected_color" type="text" :class="inputClass" />
                   </div>
                   <div>
@@ -1185,6 +1190,16 @@ onMounted(() => {
             <div>
               <label class="block text-xs text-slate-500 mb-1">Телефон получателя</label>
               <input v-model="draft.recipient_phone" type="text" :class="inputClass" />
+            </div>
+            <div>
+              <label class="block text-xs text-slate-500 mb-1">Получение заказа по адресу</label>
+              <textarea
+                v-model="draft.pickup_address"
+                rows="2"
+                :class="inputClass"
+                placeholder="пгт. Агинское, ул. Цыбикова 6в, магазин Руно"
+                maxlength="500"
+              />
             </div>
           </Card>
         </div>

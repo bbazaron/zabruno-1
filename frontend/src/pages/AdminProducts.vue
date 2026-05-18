@@ -8,6 +8,15 @@ import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import {
+  parseSchoolColorOptions,
+  serializeSchoolColorOptions,
+} from '../utils/productSchoolColors'
+import {
+  defaultProductSizes,
+  normalizeProductSize,
+  parseProductSizes,
+} from '../utils/productSizes'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 const MAX_MEDIA_FILES = 10
@@ -22,6 +31,7 @@ interface AdminProduct {
   price: string | number
   original_price: string | number | null
   color: string | null
+  sizes?: string[] | null
   image: string | null
   media?: Array<{
     id: number
@@ -49,6 +59,8 @@ const formPrice = ref('')
 const formOriginalPrice = ref('')
 const formColors = ref<string[]>([])
 const colorDraft = ref('')
+const formSizes = ref<string[]>([])
+const sizeDraft = ref('')
 const formMediaFiles = ref<File[]>([])
 const existingMedia = ref<Array<{ id: number; path: string; sort_order: number }>>([])
 const removeMediaIds = ref<number[]>([])
@@ -102,6 +114,8 @@ function resetForm() {
   formOriginalPrice.value = ''
   formColors.value = []
   colorDraft.value = ''
+  formSizes.value = defaultProductSizes()
+  sizeDraft.value = ''
   formMediaFiles.value = []
   existingMedia.value = []
   removeMediaIds.value = []
@@ -119,8 +133,11 @@ function fillForm(p: AdminProduct) {
   formPrice.value = String(p.price ?? '')
   formOriginalPrice.value =
     p.original_price != null && p.original_price !== '' ? String(p.original_price) : ''
-  formColors.value = parseColorList(p.color)
+  formColors.value = parseSchoolColorOptions(p.color)
   colorDraft.value = ''
+  const parsedSizes = parseProductSizes(p.sizes)
+  formSizes.value = parsedSizes.length > 0 ? parsedSizes : defaultProductSizes()
+  sizeDraft.value = ''
   formMediaFiles.value = []
   existingMedia.value = Array.isArray(p.media) ? [...p.media].sort((a, b) => a.sort_order - b.sort_order) : []
   removeMediaIds.value = []
@@ -141,23 +158,10 @@ function buildPayload(): Record<string, string | number | boolean | null> {
     season: formSeason.value.trim() || null,
     price: Number.isFinite(price) ? price : 0,
     original_price: original != null && Number.isFinite(original) ? original : null,
-    color: formColors.value.length > 0 ? formColors.value.join(', ') : null,
+    color: serializeSchoolColorOptions(formColors.value),
     description: formDescription.value.trim() || null,
     in_stock: formInStock.value,
   }
-}
-
-function parseColorList(raw: string | null | undefined): string[] {
-  const value = String(raw ?? '').trim()
-  if (!value) return []
-  return Array.from(
-    new Set(
-      value
-        .split(/[,;|\n]/g)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  )
 }
 
 function addColorFromDraft() {
@@ -178,6 +182,31 @@ function onColorDraftEnter(event: KeyboardEvent) {
 
 function removeColor(index: number) {
   formColors.value = formColors.value.filter((_, idx) => idx !== index)
+}
+
+function addSizeFromDraft() {
+  const normalized = normalizeProductSize(sizeDraft.value)
+  if (!normalized) {
+    if (sizeDraft.value.trim()) {
+      showToast('Укажите числовой размер, например 36', 'error')
+    }
+    return
+  }
+  if (formSizes.value.includes(normalized)) {
+    sizeDraft.value = ''
+    return
+  }
+  formSizes.value = [...formSizes.value, normalized].sort((a, b) => Number(a) - Number(b))
+  sizeDraft.value = ''
+}
+
+function onSizeDraftEnter(event: KeyboardEvent) {
+  event.preventDefault()
+  addSizeFromDraft()
+}
+
+function removeSize(index: number) {
+  formSizes.value = formSizes.value.filter((_, idx) => idx !== index)
 }
 
 function onMediaFilesChange(event: Event) {
@@ -256,6 +285,12 @@ function buildFormData(): FormData {
   for (const mediaId of removeMediaIds.value) {
     fd.append('remove_media_ids[]', String(mediaId))
   }
+  for (const size of formSizes.value) {
+    fd.append('sizes[]', size)
+  }
+  for (const option of formColors.value) {
+    fd.append('school_colors[]', option)
+  }
   return fd
 }
 
@@ -301,6 +336,9 @@ async function submitForm() {
   if (!Number.isFinite(priceNum) || priceNum < 0) {
     showToast('Укажите корректную цену', 'error')
     return
+  }
+  if (formSizes.value.length === 0) {
+    formSizes.value = defaultProductSizes()
   }
 
   saving.value = true
@@ -435,38 +473,75 @@ onMounted(() => {
             <input id="ap-season" v-model="formSeason" type="text" :class="inputClass" placeholder="Необязательно" />
           </div>
           <div>
-            <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-color">Цвет</label>
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-school-color">Школа / цвет</label>
             <div class="space-y-2">
               <div class="flex gap-2">
                 <input
-                  id="ap-color"
+                  id="ap-school-color"
                   v-model="colorDraft"
                   type="text"
                   :class="inputClass"
-                  placeholder="Например: Бордовый"
+                  placeholder="Например: Школа №2, бордовый цвет"
                   @keydown.enter="onColorDraftEnter"
                 />
                 <Button type="button" variant="outline" @click="addColorFromDraft">Добавить</Button>
               </div>
-              <div v-if="formColors.length > 0" class="flex flex-wrap gap-2">
-                <span
+              <div v-if="formColors.length > 0" class="space-y-2">
+                <div
                   v-for="(color, idx) in formColors"
                   :key="`${color}-${idx}`"
-                  class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+                  class="flex items-start justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-slate-700"
                 >
-                  {{ color }}
+                  <span class="min-w-0 break-words">{{ color }}</span>
+                  <button
+                    type="button"
+                    class="shrink-0 text-slate-500 hover:text-red-600"
+                    aria-label="Удалить вариант"
+                    @click="removeColor(idx)"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <p class="text-xs text-slate-500">
+                Каждая строка — отдельный вариант для выпадающего списка на странице товара (школа и цвет вместе).
+              </p>
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-size">Размеры</label>
+            <div class="space-y-2">
+              <div class="flex gap-2">
+                <input
+                  id="ap-size"
+                  v-model="sizeDraft"
+                  type="text"
+                  inputmode="decimal"
+                  :class="inputClass"
+                  placeholder="Например: 36"
+                  @keydown.enter="onSizeDraftEnter"
+                />
+                <Button type="button" variant="outline" @click="addSizeFromDraft">Добавить</Button>
+              </div>
+              <div v-if="formSizes.length > 0" class="flex flex-wrap gap-2">
+                <span
+                  v-for="(size, idx) in formSizes"
+                  :key="`${size}-${idx}`"
+                  class="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 tabular-nums"
+                >
+                  {{ size }}
                   <button
                     type="button"
                     class="text-slate-500 hover:text-red-600"
-                    aria-label="Удалить цвет"
-                    @click="removeColor(idx)"
+                    aria-label="Удалить размер"
+                    @click="removeSize(idx)"
                   >
                     ×
                   </button>
                 </span>
               </div>
               <p class="text-xs text-slate-500">
-                Пользователь сможет выбрать только эти цвета на странице товара.
+                Числовой размерный ряд для этого товара. Покупатель выберет один из них в каталоге и на странице товара.
               </p>
             </div>
           </div>
@@ -587,6 +662,7 @@ onMounted(() => {
                 <th class="py-2 px-3 font-medium text-slate-700">Категория</th>
                 <th class="py-2 px-3 font-medium text-slate-700">Пол</th>
                 <th class="py-2 px-3 font-medium text-slate-700">Цена</th>
+                <th class="py-2 px-3 font-medium text-slate-700">Размеры</th>
                 <th class="py-2 px-3 font-medium text-slate-700">Наличие</th>
                 <th class="py-2 px-3 font-medium text-slate-700 w-[1%] whitespace-nowrap">Действия</th>
               </tr>
@@ -612,6 +688,9 @@ onMounted(() => {
                 <td class="py-2 px-3 align-middle">{{ getCategoryLabel(p.category) }}</td>
                 <td class="py-2 px-3 align-middle">{{ p.gender === 'boys' ? 'Мальчики' : 'Девочки' }}</td>
                 <td class="py-2 px-3 align-middle tabular-nums">{{ p.price }} ₽</td>
+                <td class="py-2 px-3 align-middle text-xs text-slate-600 max-w-[140px]">
+                  {{ parseProductSizes(p.sizes).join(', ') || '—' }}
+                </td>
                 <td class="py-2 px-3 align-middle">{{ p.in_stock ? 'Да' : 'Нет' }}</td>
                 <td class="py-2 px-3 align-middle">
                   <div class="flex flex-wrap gap-2">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import axios from 'axios'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -10,6 +10,16 @@ import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 import { useToast } from '../composables/useToast'
+import {
+  parseSchoolColorOptions,
+  SCHOOL_COLOR_OTHER_LABEL,
+  SCHOOL_COLOR_OTHER_VALUE,
+} from '../utils/productSchoolColors'
+import {
+  defaultSelectedSize,
+  isProductSizeAllowed,
+  parseProductSizes,
+} from '../utils/productSizes'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,15 +30,55 @@ const product = ref<any>(null)
 const selectedMedia = ref('') // ссылка на текущее главное изображение/видео
 const isMediaViewerOpen = ref(false)
 const activeMediaIndex = ref(0)
-const selectedSize = ref<'XS' | 'S' | 'M' | 'L' | 'XL'>('M')
-const selectedColor = ref('')
+const selectedSize = ref('')
+const schoolColorChoice = ref('')
+const customSchoolColor = ref('')
 const selectedClassNumber = ref('')
 const selectedClassLetter = ref('')
 const cartLoading = ref(false)
-const availableSizes: Array<'XS' | 'S' | 'M' | 'L' | 'XL'> = ['XS', 'S', 'M', 'L', 'XL']
+const availableSizes = ref<string[]>([])
 const availableClassNumbers = Array.from({ length: 11 }, (_, i) => String(i + 1))
 const availableClassLetters = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'К', 'Л', 'М']
 const cartByVariant = ref<Record<string, number>>({})
+
+const selectClass =
+  'w-full max-w-md px-3 py-2 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900'
+
+const schoolColorOptions = computed(() => parseSchoolColorOptions(product.value?.color))
+
+const effectiveSchoolColor = computed((): string => {
+  if (schoolColorChoice.value === SCHOOL_COLOR_OTHER_VALUE) {
+    return customSchoolColor.value.trim()
+  }
+  return schoolColorChoice.value.trim()
+})
+
+function isKnownSchoolColor(value: string): boolean {
+  const normalized = value.trim()
+  if (!normalized) return false
+  return schoolColorOptions.value.some(
+    (option) => option.localeCompare(normalized, undefined, { sensitivity: 'accent' }) === 0,
+  )
+}
+
+function syncSchoolColorFromCartValue(value: string) {
+  const normalized = value.trim()
+  if (!normalized) {
+    schoolColorChoice.value = schoolColorOptions.value[0] ?? ''
+    customSchoolColor.value = ''
+    return
+  }
+  if (isKnownSchoolColor(normalized)) {
+    schoolColorChoice.value =
+      schoolColorOptions.value.find(
+        (option) => option.localeCompare(normalized, undefined, { sensitivity: 'accent' }) === 0,
+      ) ?? normalized
+    customSchoolColor.value = ''
+    return
+  }
+  schoolColorChoice.value = SCHOOL_COLOR_OTHER_VALUE
+  customSchoolColor.value = normalized
+}
 
 async function fetchProduct() {
   try {
@@ -36,11 +86,13 @@ async function fetchProduct() {
       headers: { Accept: 'application/json' },
     })
     product.value = response.data
+    availableSizes.value = parseProductSizes(product.value?.sizes)
+    selectedSize.value = defaultSelectedSize(availableSizes.value)
     if (typeof product.value?.name === 'string' && product.value.name.trim()) {
       document.title = product.value.name.trim()
     }
-    const colorOptions = availableColors()
-    selectedColor.value = colorOptions[0] ?? ''
+    schoolColorChoice.value = schoolColorOptions.value[0] ?? ''
+    customSchoolColor.value = ''
     selectedMedia.value = resolveBackendMediaUrl(product.value.image) // первое изображение по умолчанию
     await loadCartState()
   } catch (err) {
@@ -96,22 +148,12 @@ function getStoredToken(): string | null {
 
 function cartQuantityForSelectedSize(): number {
   return cartByVariant.value[
-    cartVariantKey(selectedSize.value, selectedColor.value, selectedClassLabel())
+    cartVariantKey(selectedSize.value, effectiveSchoolColor.value, selectedClassLabel())
   ] ?? 0
 }
 
 function cartVariantKey(size: string, color: string, classLabel: string): string {
   return `${size}|${color.trim().toLowerCase()}|${classLabel.trim().toUpperCase()}`
-}
-
-function availableColors(): string[] {
-  const raw = String(product.value?.color ?? '').trim()
-  if (!raw) return []
-  const parts = raw
-    .split(/[,;|\n]/g)
-    .map((item: string) => item.trim())
-    .filter(Boolean)
-  return Array.from(new Set(parts))
 }
 
 function selectedClassLabel(): string {
@@ -145,13 +187,17 @@ async function loadCartState() {
       const rowProductId = Number(row?.product_id ?? row?.product?.id)
       if (rowProductId !== Number(product.value.id)) continue
 
-      const size = String(row?.selected_size ?? '').trim().toUpperCase()
+      const size = String(row?.selected_size ?? '').trim()
       const color = String(row?.selected_color ?? '').trim()
       const classLabel = String(row?.selected_class ?? '').trim().toUpperCase()
       const quantity = Number(row?.quantity ?? 0)
-      if (!availableSizes.includes(size as (typeof availableSizes)[number])) continue
+      if (!isProductSizeAllowed(size, availableSizes.value)) continue
 
       nextState[cartVariantKey(size, color, classLabel)] = quantity > 0 ? quantity : 1
+
+      if (quantity > 0 && color) {
+        syncSchoolColorFromCartValue(color)
+      }
     }
 
     cartByVariant.value = nextState
@@ -171,14 +217,23 @@ async function addToCartAction() {
     showToast('Товар не найден', 'error')
     return
   }
-  if (availableColors().length === 0) {
-    showToast('Для товара не настроены доступные цвета', 'error')
-    return
+  const sizeToSend =
+    availableSizes.value.length > 0
+      ? defaultSelectedSize(availableSizes.value, selectedSize.value)
+      : null
+
+  if (schoolColorOptions.value.length > 0) {
+    if (!schoolColorChoice.value) {
+      showToast('Выберите школу и цвет', 'error')
+      return
+    }
+    if (schoolColorChoice.value === SCHOOL_COLOR_OTHER_VALUE && !customSchoolColor.value.trim()) {
+      showToast('Укажите школу и цвет в поле «Другое»', 'error')
+      return
+    }
   }
-  if (!selectedColor.value.trim()) {
-    showToast('Выберите цвет', 'error')
-    return
-  }
+
+  const colorToSend = effectiveSchoolColor.value || schoolColorOptions.value[0] || null
 
   cartLoading.value = true
   try {
@@ -187,8 +242,8 @@ async function addToCartAction() {
       {
         product_id: Number(product.value.id),
         quantity: 1,
-        selected_size: selectedSize.value,
-        selected_color: selectedColor.value.trim() || null,
+        selected_size: sizeToSend,
+        selected_color: colorToSend,
         selected_class: selectedClassLabel() || null,
       },
       {
@@ -246,26 +301,30 @@ async function addToCartAction() {
           <p v-if="product.season" class="text-sm text-slate-600">
             Сезон: <span class="font-medium text-slate-900">{{ product.season }}</span>
           </p>
-          <div v-if="availableColors().length > 0">
-            <p class="text-sm font-medium text-slate-700 mb-2">Цвет</p>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="color in availableColors()"
-                :key="color"
-                type="button"
-                class="px-3 py-1.5 text-sm rounded-md border transition-colors"
-                :class="
-                  selectedColor === color
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-neutral-100'
-                "
-                @click="selectedColor = color"
-              >
-                {{ color }}
-              </button>
+          <div v-if="schoolColorOptions.length > 0" class="w-full max-w-md space-y-2">
+            <label for="product-school-color" class="block text-sm font-medium text-slate-700">
+              Школа / цвет
+            </label>
+            <select id="product-school-color" v-model="schoolColorChoice" :class="selectClass">
+              <option value="" disabled>Выберите школу и цвет</option>
+              <option v-for="option in schoolColorOptions" :key="option" :value="option">
+                {{ option }}
+              </option>
+              <option :value="SCHOOL_COLOR_OTHER_VALUE">{{ SCHOOL_COLOR_OTHER_LABEL }}</option>
+            </select>
+            <div v-if="schoolColorChoice === SCHOOL_COLOR_OTHER_VALUE">
+              <label for="product-school-color-custom" class="sr-only">Укажите школу и цвет</label>
+              <input
+                id="product-school-color-custom"
+                v-model="customSchoolColor"
+                type="text"
+                :class="selectClass"
+                placeholder="Например: Школа №15, синий"
+                maxlength="255"
+              />
             </div>
           </div>
-          <div>
+          <div v-if="availableSizes.length > 0">
             <p class="text-sm font-medium text-slate-700 mb-2">Размер</p>
             <div class="flex flex-wrap gap-2">
               <button

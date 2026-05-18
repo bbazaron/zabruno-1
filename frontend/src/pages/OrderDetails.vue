@@ -8,6 +8,7 @@ import Card from '../components/ui/Card.vue'
 import Typography from '../components/ui/Typography.vue'
 import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
+import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
 import { Phone, MapPin, Package, Info } from 'lucide-vue-next'
 
@@ -51,6 +52,7 @@ interface OrderDetails {
   recipient_is_customer: boolean
   recipient_name?: string | null
   recipient_phone: string
+  pickup_address?: string | null
   items: OrderItem[]
 }
 
@@ -127,10 +129,10 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-const PICKUP_ADDRESS = 'пгт. Агинское, ул. Цыбикова 6в, магазин Руно'
+const { loadDefaultPickupAddress, pickupLabelForOrder } = usePickupAddress()
 
-function pickupLabel(_o: OrderDetails): string {
-  return PICKUP_ADDRESS
+function pickupLabel(o: OrderDetails): string {
+  return pickupLabelForOrder(o)
 }
 
 function childGenderLabel(g: string): string {
@@ -242,6 +244,7 @@ async function loadOrderDetails() {
 
 onMounted(() => {
   void loadProducts()
+  void loadDefaultPickupAddress()
   loadOrderDetails()
 })
 </script>
@@ -412,7 +415,7 @@ onMounted(() => {
                   Размер: {{ item.size_override }}
                 </p>
                 <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
-                  Цвет: {{ item.selected_color }}
+                  Школа / цвет: {{ item.selected_color }}
                 </p>
                 <p v-if="item.selected_class" class="text-xs text-slate-600 mt-1">
                   Класс: {{ item.selected_class }}

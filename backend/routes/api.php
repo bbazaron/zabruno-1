@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\AdminPickupSettingController;
 use App\Http\Controllers\AdminProductController;
+use App\Http\Controllers\PickupSettingController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
@@ -32,6 +34,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/admin/orders/{id}', [OrderController::class, 'deleteAdminOrder']);
         Route::post('/admin/orders/{id}/refunds', [OrderController::class, 'createAdminRefund']);
 
+        Route::get('/admin/settings/pickup-address', [AdminPickupSettingController::class, 'show']);
+        Route::patch('/admin/settings/pickup-address', [AdminPickupSettingController::class, 'update']);
+
         Route::get('/admin/products', [AdminProductController::class, 'index']);
         Route::post('/admin/products', [AdminProductController::class, 'store']);
         Route::patch('/admin/products/{id}', [AdminProductController::class, 'update']);
@@ -46,6 +51,7 @@ Route::post('/yookassa/webhook', [YooKassaController::class, 'handle'])->middlew
 
 Route::get('/index', [ProductController::class, 'index']);
 Route::get('/product/{id}', [ProductController::class, 'getProductPage']);
+Route::get('/settings/pickup-address', [PickupSettingController::class, 'show']);
 
 Route::post('/createOrder', [OrderController::class, 'createOrder']);
 Route::post('/orderEstimateTotal', [OrderController::class, 'estimateOrderTotal']);

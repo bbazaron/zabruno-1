@@ -284,7 +284,7 @@ onMounted(() => {
                 Размер: {{ item.selected_size }}
               </p>
               <p v-if="item.selected_color" class="text-xs text-slate-500 mt-1">
-                Цвет: {{ item.selected_color }}
+                Школа / цвет: {{ item.selected_color }}
               </p>
               <p v-if="item.selected_class" class="text-xs text-slate-500 mt-1">
                 Класс: {{ item.selected_class }}

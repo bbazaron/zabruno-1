@@ -7,6 +7,7 @@ import Footer from '../components/sections/Footer.vue'
 import axios from 'axios'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useToast } from '../composables/useToast'
+import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
 import {
   Phone,
@@ -30,6 +31,7 @@ interface BackendOrder {
   school?: string
   settlement?: string
   child_gender?: string
+  pickup_address?: string | null
   items?: Array<{
     id: number
     product_name: string
@@ -239,10 +241,10 @@ function formatPhoneDisplay(phone: string | undefined): string {
   return String(phone).trim()
 }
 
-const PICKUP_ADDRESS = 'пгт. Агинское, ул. Цыбикова 6в, магазин Руно'
+const { loadDefaultPickupAddress, pickupLabelForOrder } = usePickupAddress()
 
-function pickupLabel(_order: BackendOrder): string {
-  return PICKUP_ADDRESS
+function pickupLabel(order: BackendOrder): string {
+  return pickupLabelForOrder(order)
 }
 
 const STATUS_BADGE: Record<string, { label: string; class: string }> = {
@@ -317,6 +319,7 @@ onMounted(() => {
   loadUser()
   loadOrders()
   void loadProducts()
+  void loadDefaultPickupAddress()
 })
 </script>
 

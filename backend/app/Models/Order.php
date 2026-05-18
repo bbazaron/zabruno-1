@@ -34,6 +34,7 @@ class Order extends Model
         'recipient_is_customer',
         'recipient_name',
         'recipient_phone',
+        'pickup_address',
         'terms_accepted',
         'total_amount',
         'refunded_amount',

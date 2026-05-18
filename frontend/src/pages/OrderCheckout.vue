@@ -7,6 +7,7 @@ import Button from '../components/ui/Button.vue'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import { usePickupAddress } from '../composables/usePickupAddress'
 
 const AUTH_TOKEN_KEY = 'auth_token'
 
@@ -18,6 +19,7 @@ const measureInputClass =
   `${inputClass} pr-10 tabular-nums [appearance:textfield]`
 
 const route = useRoute()
+const { defaultPickupAddress, loadDefaultPickupAddress } = usePickupAddress()
 
 const step = ref(1)
 const totalSteps = 6
@@ -39,6 +41,7 @@ const isAuthenticated = ref(false)
 const accountEmail = ref('')
 
 onMounted(() => {
+  void loadDefaultPickupAddress()
   const q = route.query.fromPayment
   if (Array.isArray(q) ? q[0] === '1' : q === '1') {
     submitted.value = true
@@ -1575,7 +1578,7 @@ const summaryLines = computed(() => {
               variant="body"
               class="rounded-lg border border-neutral-200 bg-white px-4 py-3 text-slate-700 leading-relaxed"
             >
-              Получение заказа по адресу: пгт. Агинское, ул. Цыбикова 6в, магазин Руно
+              Получение заказа по адресу: {{ defaultPickupAddress }}
 
             </Typography>
             <div

@@ -6,6 +6,7 @@ import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
+import { usePickupAddress } from '../composables/usePickupAddress'
 
 interface CartItem {
   id: number
@@ -22,6 +23,7 @@ interface CartItem {
 
 const router = useRouter()
 const { showToast } = useToast()
+const { defaultPickupAddress, loadDefaultPickupAddress } = usePickupAddress()
 const loading = ref(false)
 const submitting = ref(false)
 const items = ref<CartItem[]>([])
@@ -276,6 +278,7 @@ async function submitOrder() {
 }
 
 onMounted(() => {
+  void loadDefaultPickupAddress()
   void loadData()
 })
 </script>
@@ -408,7 +411,7 @@ onMounted(() => {
         v-if="!loading"
         class="mt-6 rounded-lg border border-neutral-200 bg-white px-4 py-3 text-slate-700 leading-relaxed"
       >
-        Получение заказа по адресу: пгт. Агинское, ул. Цыбикова 6в, магазин Руно
+        Получение заказа по адресу: {{ defaultPickupAddress }}
       </p>
     </main>
     <Footer />

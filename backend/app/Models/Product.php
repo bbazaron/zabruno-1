@@ -2,19 +2,31 @@
 
 namespace App\Models;
 
+use App\Support\ProductSizes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
     protected $fillable = [
-        'name', 'category', 'gender', 'season', 'price', 'original_price', 'color', 'class_code',
+        'name', 'category', 'gender', 'season', 'price', 'original_price', 'color', 'sizes', 'class_code',
         'image', 'description', 'in_stock'
     ];
 
     protected $casts = [
-        'in_stock' => 'boolean'
+        'in_stock' => 'boolean',
+        'sizes' => 'array',
     ];
+
+    /**
+     * @return list<string>
+     */
+    public function sizesList(): array
+    {
+        $list = ProductSizes::normalizeList($this->sizes);
+
+        return $list !== [] ? $list : ProductSizes::defaultList();
+    }
 
     public function cartItems(): HasMany
     {

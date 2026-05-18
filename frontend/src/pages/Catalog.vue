@@ -10,6 +10,12 @@ import { ShoppingCart, Filter, ChevronLeft, ChevronRight } from 'lucide-vue-next
 import { useRoute, useRouter } from 'vue-router'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 import { useToast } from '../composables/useToast'
+import { parseSchoolColorOptions } from '../utils/productSchoolColors'
+import {
+  defaultSelectedSize,
+  isProductSizeAllowed,
+  parseProductSizes,
+} from '../utils/productSizes'
 
 type GenderFilter = 'all' | 'boys' | 'girls'
 
@@ -40,6 +46,7 @@ interface BackendCatalogProduct {
   price: number
   original_price?: number | null
   in_stock?: boolean
+  sizes?: string[] | null
 }
 
 interface CartStateItem {
@@ -68,31 +75,14 @@ const products = ref<CatalogProduct[]>([])
 const addingProductId = ref<number | null>(null)
 const cartByProductSizeKey = ref<Record<string, CartStateItem>>({})
 const selectedSizeByProductId = ref<Record<number, string>>({})
-const selectedColorByProductId = ref<Record<number, string>>({})
 const currentMediaIndexByProductId = ref<Record<number, number>>({})
-const AVAILABLE_SIZES = ['XS', 'S', 'M', 'L', 'XL'] as const
-
 function productSizeKey(productId: number, size: string, color: string): string {
   return `${productId}:${size}:${color.trim().toLowerCase()}`
-}
-
-function extractProductColors(raw: string | null | undefined): string[] {
-  const value = String(raw ?? '').trim()
-  if (!value) return []
-  return Array.from(
-    new Set(
-      value
-        .split(/[,;|\n]/g)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  )
 }
 
 function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
 }
-
 
 async function fetchProducts() {
   try {
@@ -117,17 +107,12 @@ async function fetchProducts() {
         color: row.color ?? null,
         price: Number(row.price),
         originalPrice: row.original_price == null ? undefined : Number(row.original_price),
-        sizes: [...AVAILABLE_SIZES],
+        sizes: parseProductSizes(row.sizes),
         inStock: Boolean(row.in_stock),
       }
     })
     selectedSizeByProductId.value = products.value.reduce<Record<number, string>>((acc, p) => {
-      acc[p.id] = selectedSizeByProductId.value[p.id] ?? 'M'
-      return acc
-    }, {})
-    selectedColorByProductId.value = products.value.reduce<Record<number, string>>((acc, p) => {
-      const colors = extractProductColors(p.color)
-      acc[p.id] = selectedColorByProductId.value[p.id] ?? colors[0] ?? ''
+      acc[p.id] = defaultSelectedSize(p.sizes, selectedSizeByProductId.value[p.id])
       return acc
     }, {})
     currentMediaIndexByProductId.value = products.value.reduce<Record<number, number>>((acc, p) => {
@@ -164,10 +149,16 @@ async function loadCartState() {
       const productId = Number(row?.product_id ?? row?.product?.id)
       const itemId = Number(row?.id)
       const quantity = Number(row?.quantity ?? 0)
-      const size = String(row?.selected_size ?? '').trim().toUpperCase()
+      const size = String(row?.selected_size ?? '').trim()
       const color = String(row?.selected_color ?? '').trim()
+      const product = products.value.find((p) => p.id === productId)
 
-      if (productId > 0 && itemId > 0 && AVAILABLE_SIZES.includes(size as (typeof AVAILABLE_SIZES)[number])) {
+      if (
+        productId > 0 &&
+        itemId > 0 &&
+        product &&
+        isProductSizeAllowed(size, product.sizes)
+      ) {
         nextState[productSizeKey(productId, size, color)] = {
           itemId,
           quantity: quantity > 0 ? quantity : 1,
@@ -249,17 +240,10 @@ async function addToCart(product: CatalogProduct) {
     return
   }
 
-  const selectedSize = selectedSizeByProductId.value[product.id]
-  if (!selectedSize) {
-    showToast('Выберите размер', 'error')
-    return
-  }
-  const firstColor = extractProductColors(product.color)[0] ?? ''
-  const selectedColor = selectedColorByProductId.value[product.id] || firstColor
-  if (!selectedColor) {
-    showToast('Для товара не настроены доступные цвета', 'error')
-    return
-  }
+  const selectedSize =
+    product.sizes.length > 0
+      ? defaultSelectedSize(product.sizes, selectedSizeByProductId.value[product.id])
+      : null
 
   addingProductId.value = product.id
   try {
@@ -269,7 +253,7 @@ async function addToCart(product: CatalogProduct) {
         product_id: product.id,
         quantity: 1,
         selected_size: selectedSize,
-        selected_color: selectedColor,
+        selected_color: null,
       },
       {
         headers: {
@@ -285,7 +269,7 @@ async function addToCart(product: CatalogProduct) {
     if (itemId > 0) {
       cartByProductSizeKey.value = {
         ...cartByProductSizeKey.value,
-        [productSizeKey(product.id, selectedSize, selectedColor)]: {
+        [productSizeKey(product.id, selectedSize ?? '', '')]: {
           itemId,
           quantity: quantity > 0 ? quantity : 1,
         },
@@ -306,14 +290,27 @@ function handleCartButtonClick(product: CatalogProduct) {
     void router.push('/cart')
     return
   }
+  if (parseSchoolColorOptions(product.color).length > 0) {
+    void router.push(`/product/${product.id}`)
+    return
+  }
   void addToCart(product)
 }
 
 function cartQuantity(productId: number): number {
   const selectedSize = selectedSizeByProductId.value[productId]
-  const selectedColor = selectedColorByProductId.value[productId] ?? ''
-  if (!selectedSize) return 0
-  return cartByProductSizeKey.value[productSizeKey(productId, selectedSize, selectedColor)]?.quantity ?? 0
+  const prefix = `${productId}:`
+  let total = 0
+
+  for (const [key, item] of Object.entries(cartByProductSizeKey.value)) {
+    if (!key.startsWith(prefix)) continue
+    const parts = key.split(':')
+    const size = parts[1] ?? ''
+    if (selectedSize && size !== selectedSize) continue
+    total += item.quantity
+  }
+
+  return total
 }
 
 function resolvedMedia(product: CatalogProduct): string[] {
@@ -532,7 +529,7 @@ function changeProductMedia(product: CatalogProduct, step: number) {
                     </Typography>
 
                     <!-- Sizes -->
-                    <div class="mb-4">
+                    <div v-if="product.sizes.length > 0" class="mb-4">
                       <div class="flex flex-wrap gap-1">
                         <button
                           v-for="size in product.sizes"

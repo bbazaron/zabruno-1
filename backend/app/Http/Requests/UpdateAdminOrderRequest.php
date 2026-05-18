@@ -67,6 +67,7 @@ class UpdateAdminOrderRequest extends FormRequest
             'recipient_is_customer' => 'required|boolean',
             'recipient_name' => 'nullable|required_if:recipient_is_customer,false|string|max:255',
             'recipient_phone' => 'required|string|max:32',
+            'pickup_address' => 'required|string|max:500',
         ];
     }
 

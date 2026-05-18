@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Support\ProductSchoolColors;
+use App\Support\ProductSizes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +31,11 @@ class AdminProductController extends Controller
             'season' => 'nullable|string|max:50',
             'price' => 'required|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
-            'color' => 'nullable|string|max:255',
+            'color' => 'nullable|string',
+            'school_colors' => 'sometimes|array|max:50',
+            'school_colors.*' => 'required|string|max:255',
+            'sizes' => 'required|array|min:1|max:30',
+            'sizes.*' => 'required|string|max:16',
             'image' => 'nullable|string|max:2048',
             'description' => 'nullable|string',
             'in_stock' => 'sometimes|boolean',
@@ -40,9 +46,9 @@ class AdminProductController extends Controller
         if (! array_key_exists('in_stock', $validated)) {
             $validated['in_stock'] = true;
         }
-        if (array_key_exists('color', $validated)) {
-            $validated['color'] = $this->normalizeColorList($validated['color']);
-        }
+        $validated['color'] = $this->resolveSchoolColors($request, $validated['color'] ?? null);
+        unset($validated['school_colors']);
+        $validated['sizes'] = $this->normalizeSizesList($validated['sizes'] ?? []);
         $validated['image'] = $this->sanitizeImagePath($validated['image'] ?? null);
 
         $product = DB::transaction(function () use ($request, $validated) {
@@ -67,7 +73,11 @@ class AdminProductController extends Controller
             'season' => 'nullable|string|max:50',
             'price' => 'sometimes|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
-            'color' => 'nullable|string|max:255',
+            'color' => 'nullable|string',
+            'school_colors' => 'sometimes|array|max:50',
+            'school_colors.*' => 'required|string|max:255',
+            'sizes' => 'sometimes|array|min:1|max:30',
+            'sizes.*' => 'required|string|max:16',
             'image' => 'nullable|string|max:2048',
             'description' => 'nullable|string',
             'in_stock' => 'sometimes|boolean',
@@ -79,8 +89,12 @@ class AdminProductController extends Controller
         if (array_key_exists('image', $validated)) {
             $validated['image'] = $this->sanitizeImagePath($validated['image']);
         }
-        if (array_key_exists('color', $validated)) {
-            $validated['color'] = $this->normalizeColorList($validated['color']);
+        if ($request->has('school_colors') || array_key_exists('color', $validated)) {
+            $validated['color'] = $this->resolveSchoolColors($request, $validated['color'] ?? null);
+        }
+        unset($validated['school_colors']);
+        if (array_key_exists('sizes', $validated)) {
+            $validated['sizes'] = $this->normalizeSizesList($validated['sizes']);
         }
 
         $product = DB::transaction(function () use ($request, $product, $validated) {
@@ -158,29 +172,28 @@ class AdminProductController extends Controller
         return $value;
     }
 
-    private function normalizeColorList(?string $raw): ?string
+    private function resolveSchoolColors(Request $request, ?string $fallbackColor): ?string
     {
-        $value = trim((string) ($raw ?? ''));
-        if ($value === '') {
+        $fromArray = $request->input('school_colors');
+        if (is_array($fromArray) && $fromArray !== []) {
+            return ProductSchoolColors::serializeList($fromArray);
+        }
+
+        if ($fallbackColor === null) {
             return null;
         }
 
-        $parts = preg_split('/[,;|\n]+/u', $value) ?: [];
-        $normalized = [];
-        foreach ($parts as $part) {
-            $item = trim((string) $part);
-            if ($item === '') {
-                continue;
-            }
-            if (! in_array($item, $normalized, true)) {
-                $normalized[] = $item;
-            }
-        }
+        return ProductSchoolColors::normalizeStored($fallbackColor);
+    }
 
-        if ($normalized === []) {
-            return null;
-        }
+    /**
+     * @param  array<int, mixed>  $raw
+     * @return list<string>
+     */
+    private function normalizeSizesList(array $raw): array
+    {
+        $normalized = ProductSizes::normalizeList($raw);
 
-        return implode(', ', $normalized);
+        return $normalized !== [] ? $normalized : ProductSizes::defaultList();
     }
 }

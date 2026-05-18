@@ -7,6 +7,7 @@ use App\Models\PaymentRefund;
 use App\Models\Product;
 use App\Models\UserProduct;
 use App\Models\User;
+use App\Support\PickupAddress;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -39,6 +40,7 @@ class OrderService
 
         $validated['user_id'] = $this->resolveUserId($request);
         $validated['order_type'] = 'custom_tailoring';
+        $validated['pickup_address'] = PickupAddress::defaultAddress();
 
         $productGender = $this->productGenderFromChildGender($validated['child_gender'] ?? null);
         $validated['total_amount'] = $this->calculateTotalAmount($items, $productGender);
@@ -173,6 +175,7 @@ class OrderService
             'recipient_is_customer' => true,
             'recipient_name' => null,
             'recipient_phone' => trim((string) $validated['parent_phone']),
+            'pickup_address' => PickupAddress::defaultAddress(),
             'terms_accepted' => true,
             'total_amount' => number_format($total, 2, '.', ''),
         ];
