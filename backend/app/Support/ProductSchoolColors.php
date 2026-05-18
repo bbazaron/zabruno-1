@@ -2,9 +2,95 @@
 
 namespace App\Support;
 
+use App\Models\Product;
+use App\Models\Setting;
+
 final class ProductSchoolColors
 {
+    public const SETTING_KEY = 'default_school_colors';
+
     private const DELIMITER = "\n";
+
+    /**
+     * @return list<string>
+     */
+    public static function defaults(): array
+    {
+        return self::parseList(Setting::getValue(self::SETTING_KEY, ''));
+    }
+
+    public static function storeDefaults(array $items): void
+    {
+        Setting::setValue(self::SETTING_KEY, self::serializeList($items) ?? '');
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function forProduct(Product $product): array
+    {
+        $defaults = self::defaults();
+        $excluded = self::parseList($product->school_color_excluded);
+        $extra = self::parseList($product->school_color_extra);
+        $legacy = self::parseList($product->color);
+
+        if ($excluded === [] && $extra === [] && $legacy !== []) {
+            return $legacy;
+        }
+
+        $activeDefaults = array_values(array_filter(
+            $defaults,
+            static fn (string $item): bool => ! in_array($item, $excluded, true),
+        ));
+
+        return self::normalizeList(array_merge($activeDefaults, $extra));
+    }
+
+    /**
+     * @return array{excluded: list<string>, extra: list<string>}
+     */
+    public static function productConfigFromLegacyColor(?string $legacyColor, ?array $defaults = null): array
+    {
+        $defaults ??= self::defaults();
+        $effective = self::parseList($legacyColor);
+
+        if ($effective === []) {
+            return ['excluded' => [], 'extra' => []];
+        }
+
+        $excluded = [];
+        foreach ($defaults as $default) {
+            if (! in_array($default, $effective, true)) {
+                $excluded[] = $default;
+            }
+        }
+
+        $extra = array_values(array_filter(
+            $effective,
+            static fn (string $item): bool => ! in_array($item, $defaults, true),
+        ));
+
+        return [
+            'excluded' => self::normalizeList($excluded),
+            'extra' => self::normalizeList($extra),
+        ];
+    }
+
+    /**
+     * @param  list<string>  $excluded
+     * @param  list<string>  $extra
+     * @return list<string>
+     */
+    public static function mergeConfig(array $excluded, array $extra, ?array $defaults = null): array
+    {
+        $defaults ??= self::defaults();
+        $activeDefaults = array_values(array_filter(
+            $defaults,
+            static fn (string $item): bool => ! in_array($item, $excluded, true),
+        ));
+
+        return self::normalizeList(array_merge($activeDefaults, $extra));
+    }
 
     /**
      * @return list<string>
@@ -28,7 +114,6 @@ final class ProductSchoolColors
                 return self::normalizeList($decoded);
             }
 
-            // Single option; commas are part of the label (e.g. "Школа №2, белый").
             $parts = [$value];
         }
 

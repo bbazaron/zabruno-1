@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Product;
+use App\Support\ProductSchoolColors;
+use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
@@ -59,7 +60,7 @@ class ProductController extends Controller
                 'media' => $mediaUrls,
                 'gender' => $product->gender,
                 'category' => $product->category,
-                'color' => $product->color,
+                'color' => ProductSchoolColors::serializeList($product->schoolColorsList()),
                 'sizes' => $product->sizesList(),
                 'price' => $product->price,
                 'original_price' => $product->original_price,
@@ -96,7 +97,7 @@ class ProductController extends Controller
             'description' => $product->description,
             'price' => $product->price,
             'originalPrice' => $product->original_price,
-            'color' => $product->color,
+            'color' => ProductSchoolColors::serializeList($product->schoolColorsList()),
             'sizes' => $product->sizesList(),
             'season' => $product->season,
             'category' => $product->category,

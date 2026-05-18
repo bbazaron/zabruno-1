@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Support\ProductSchoolColors;
 use App\Support\ProductSizes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,21 +19,32 @@ class AdminProductController extends Controller
         $products = Product::query()
             ->with('media')
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->map(fn (Product $product): array => $this->formatAdminProduct($product));
 
-        return response()->json(['products' => $products]);
+        return response()->json([
+            'products' => $products,
+            'default_school_colors' => ProductSchoolColors::defaults(),
+            'categories' => ProductCategory::query()
+                ->orderBy('sort_order')
+                ->orderBy('label')
+                ->get(['id', 'label', 'sort_order']),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'category' => 'required|string|max:50',
+            'category' => ['required', 'string', Rule::exists('product_categories', 'id')],
             'gender' => 'required|string|in:boys,girls',
             'season' => 'nullable|string|max:50',
             'price' => 'required|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
-            'color' => 'nullable|string',
+            'school_color_excluded' => 'sometimes|array|max:100',
+            'school_color_excluded.*' => 'required|string|max:255',
+            'school_color_extra' => 'sometimes|array|max:50',
+            'school_color_extra.*' => 'required|string|max:255',
             'school_colors' => 'sometimes|array|max:50',
             'school_colors.*' => 'required|string|max:255',
             'sizes' => 'required|array|min:1|max:30',
@@ -46,7 +59,7 @@ class AdminProductController extends Controller
         if (! array_key_exists('in_stock', $validated)) {
             $validated['in_stock'] = true;
         }
-        $validated['color'] = $this->resolveSchoolColors($request, $validated['color'] ?? null);
+        $validated = array_merge($validated, $this->resolveSchoolColorFields($request));
         unset($validated['school_colors']);
         $validated['sizes'] = $this->normalizeSizesList($validated['sizes'] ?? []);
         $validated['image'] = $this->sanitizeImagePath($validated['image'] ?? null);
@@ -59,7 +72,7 @@ class AdminProductController extends Controller
             return $product->fresh(['media']);
         });
 
-        return response()->json(['product' => $product], 201);
+        return response()->json(['product' => $this->formatAdminProduct($product)], 201);
     }
 
     public function update(Request $request, int $id): JsonResponse
@@ -68,12 +81,15 @@ class AdminProductController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
-            'category' => 'sometimes|string|max:50',
+            'category' => ['sometimes', 'string', Rule::exists('product_categories', 'id')],
             'gender' => 'sometimes|string|in:boys,girls',
             'season' => 'nullable|string|max:50',
             'price' => 'sometimes|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
-            'color' => 'nullable|string',
+            'school_color_excluded' => 'sometimes|array|max:100',
+            'school_color_excluded.*' => 'required|string|max:255',
+            'school_color_extra' => 'sometimes|array|max:50',
+            'school_color_extra.*' => 'required|string|max:255',
             'school_colors' => 'sometimes|array|max:50',
             'school_colors.*' => 'required|string|max:255',
             'sizes' => 'sometimes|array|min:1|max:30',
@@ -89,8 +105,12 @@ class AdminProductController extends Controller
         if (array_key_exists('image', $validated)) {
             $validated['image'] = $this->sanitizeImagePath($validated['image']);
         }
-        if ($request->has('school_colors') || array_key_exists('color', $validated)) {
-            $validated['color'] = $this->resolveSchoolColors($request, $validated['color'] ?? null);
+        if (
+            $request->has('school_color_excluded')
+            || $request->has('school_color_extra')
+            || $request->has('school_colors')
+        ) {
+            $validated = array_merge($validated, $this->resolveSchoolColorFields($request));
         }
         unset($validated['school_colors']);
         if (array_key_exists('sizes', $validated)) {
@@ -118,7 +138,7 @@ class AdminProductController extends Controller
             return $product->fresh(['media']);
         });
 
-        return response()->json(['product' => $product]);
+        return response()->json(['product' => $this->formatAdminProduct($product)]);
     }
 
     public function destroy(int $id): JsonResponse
@@ -133,6 +153,50 @@ class AdminProductController extends Controller
         $product->delete();
 
         return response()->json(['message' => 'Товар удалён']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatAdminProduct(Product $product): array
+    {
+        $data = $product->toArray();
+        $data['school_color_excluded'] = ProductSchoolColors::parseList($product->school_color_excluded);
+        $data['school_color_extra'] = ProductSchoolColors::parseList($product->school_color_extra);
+        $data['color'] = ProductSchoolColors::serializeList($product->schoolColorsList());
+
+        return $data;
+    }
+
+    /**
+     * @return array{color: ?string, school_color_excluded: ?string, school_color_extra: ?string}
+     */
+    private function resolveSchoolColorFields(Request $request): array
+    {
+        if ($request->has('school_color_excluded') || $request->has('school_color_extra')) {
+            $excluded = ProductSchoolColors::parseList($request->input('school_color_excluded'));
+            $extra = ProductSchoolColors::parseList($request->input('school_color_extra'));
+        } else {
+            $legacy = $request->input('school_colors');
+            if (is_array($legacy)) {
+                $config = ProductSchoolColors::productConfigFromLegacyColor(
+                    ProductSchoolColors::serializeList($legacy),
+                );
+                $excluded = $config['excluded'];
+                $extra = $config['extra'];
+            } else {
+                $excluded = [];
+                $extra = [];
+            }
+        }
+
+        $effective = ProductSchoolColors::mergeConfig($excluded, $extra);
+
+        return [
+            'school_color_excluded' => ProductSchoolColors::serializeList($excluded),
+            'school_color_extra' => ProductSchoolColors::serializeList($extra),
+            'color' => ProductSchoolColors::serializeList($effective),
+        ];
     }
 
     private function storeUploadedMedia(Product $product, Request $request): void
@@ -170,20 +234,6 @@ class AdminProductController extends Controller
         }
 
         return $value;
-    }
-
-    private function resolveSchoolColors(Request $request, ?string $fallbackColor): ?string
-    {
-        $fromArray = $request->input('school_colors');
-        if (is_array($fromArray) && $fromArray !== []) {
-            return ProductSchoolColors::serializeList($fromArray);
-        }
-
-        if ($fallbackColor === null) {
-            return null;
-        }
-
-        return ProductSchoolColors::normalizeStored($fallbackColor);
     }
 
     /**

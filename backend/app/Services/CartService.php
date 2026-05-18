@@ -34,7 +34,7 @@ class CartService
         $product = Product::query()->findOrFail($productId);
 
         $normalizedSize = $this->normalizeSize($selectedSize, $product);
-        $normalizedColor = $this->normalizeColor($selectedColor, (string) ($product->color ?? ''));
+        $normalizedColor = $this->normalizeColor($selectedColor, $product);
         $normalizedClass = $this->normalizeClass($selectedClass);
 
         $item = UserProduct::query()->firstOrNew([
@@ -69,9 +69,9 @@ class CartService
         return $allowed[0];
     }
 
-    private function normalizeColor(?string $value, string $rawProductColors): ?string
+    private function normalizeColor(?string $value, Product $product): ?string
     {
-        $options = ProductSchoolColors::parseList($rawProductColors);
+        $options = $product->schoolColorsList();
         if ($options === []) {
             return null;
         }

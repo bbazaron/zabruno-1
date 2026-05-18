@@ -44,3 +44,30 @@ export function serializeSchoolColorOptions(options: string[]): string | null {
   if (normalized.length === 0) return null
   return normalized.join(SCHOOL_COLOR_OPTIONS_DELIMITER)
 }
+
+export function effectiveSchoolColors(
+  defaults: string[],
+  excluded: string[],
+  extra: string[],
+): string[] {
+  const activeDefaults = defaults.filter((item) => !excluded.includes(item))
+  return normalizeSchoolColorOptions([...activeDefaults, ...extra])
+}
+
+export function productSchoolColorConfigFromLegacy(
+  legacyColor: unknown,
+  defaults: string[],
+): { excluded: string[]; extra: string[] } {
+  const effective = parseSchoolColorOptions(legacyColor)
+  if (effective.length === 0) {
+    return { excluded: [], extra: [] }
+  }
+
+  const excluded = defaults.filter((item) => !effective.includes(item))
+  const extra = effective.filter((item) => !defaults.includes(item))
+
+  return {
+    excluded: normalizeSchoolColorOptions(excluded),
+    extra: normalizeSchoolColorOptions(extra),
+  }
+}

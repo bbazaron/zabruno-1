@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, watchEffect } from 'vue'
+import { ref, computed, onMounted, watch, watchEffect } from 'vue'
 import axios from 'axios'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
@@ -198,14 +198,29 @@ const genders: { id: GenderFilter; name: string }[] = [
   { id: 'girls', name: 'Для девочек' },
 ]
 
-const categories = [
-  { id: 'all', name: 'Все товары' },
-  { id: 'cardigans', name: 'Кардиганы' },
-  { id: 'vests', name: 'Жилеты' },
-  { id: 'skirts', name: 'Юбки' },
-  { id: 'pants', name: 'Брюки' },
-  { id: 'sets', name: 'Комплекты' },
-]
+const categories = ref<{ id: string; name: string }[]>([{ id: 'all', name: 'Все товары' }])
+
+async function fetchCategories() {
+  try {
+    const response = await axios.get<{ categories?: Array<{ id: string; label: string }> }>(
+      '/api/product-categories',
+    )
+    const rows = Array.isArray(response.data?.categories) ? response.data.categories : []
+    categories.value = [
+      { id: 'all', name: 'Все товары' },
+      ...rows.map((row) => ({ id: row.id, name: row.label })),
+    ]
+    if (!categories.value.some((category) => category.id === selectedCategory.value)) {
+      selectedCategory.value = 'all'
+    }
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+onMounted(() => {
+  void fetchCategories()
+})
 
 const filteredProducts = computed(() => {
   let filtered = products.value
