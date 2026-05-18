@@ -62,10 +62,6 @@ const showDateSortMenu = ref(false)
 const showStatusMenu = ref(false)
 const showOrderTypeMenu = ref(false)
 
-const pickupAddressDraft = ref('')
-const pickupAddressSaving = ref(false)
-const pickupAddressLoading = ref(false)
-
 function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'): boolean {
   if (path === '/admin/orders') return route.path.startsWith('/admin/orders')
   return route.path === path
@@ -73,57 +69,6 @@ function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'):
 
 function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
-}
-
-async function loadPickupAddressSetting() {
-  const token = getStoredToken()
-  if (!token) return
-
-  pickupAddressLoading.value = true
-  try {
-    const res = await axios.get<{ pickup_address?: string }>('/api/admin/settings/pickup-address', {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    })
-    pickupAddressDraft.value = String(res.data?.pickup_address ?? '').trim()
-  } catch {
-    showToast('Не удалось загрузить адрес получения', 'error')
-  } finally {
-    pickupAddressLoading.value = false
-  }
-}
-
-async function savePickupAddressSetting() {
-  const token = getStoredToken()
-  if (!token) return
-
-  const value = pickupAddressDraft.value.trim()
-  if (!value) {
-    showToast('Укажите адрес получения', 'error')
-    return
-  }
-
-  pickupAddressSaving.value = true
-  try {
-    const res = await axios.patch<{ pickup_address?: string }>(
-      '/api/admin/settings/pickup-address',
-      { pickup_address: value },
-      {
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    )
-    pickupAddressDraft.value = String(res.data?.pickup_address ?? value).trim()
-    showToast('Адрес получения сохранён', 'success')
-  } catch {
-    showToast('Не удалось сохранить адрес', 'error')
-  } finally {
-    pickupAddressSaving.value = false
-  }
 }
 
 let reloadTimer: ReturnType<typeof setTimeout> | null = null
@@ -534,7 +479,6 @@ watch([searchQuery, dateFrom, dateTo], () => {
 })
 
 onMounted(() => {
-  void loadPickupAddressSetting()
   loadAllOrders()
   document.addEventListener('click', handleGlobalClick)
   document.addEventListener('keydown', handleGlobalKeydown)
@@ -572,37 +516,6 @@ onBeforeUnmount(() => {
         </Button>
       </div>
 
-      <div class="mb-6 rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 shadow-sm">
-        <Typography as="h2" class="text-lg font-medium mb-1">Адрес получения заказов</Typography>
-        <p class="text-xs text-slate-500 mb-3">
-          Используется при оформлении и для новых заказов. В карточке заказа адрес можно изменить отдельно.
-        </p>
-        <div v-if="pickupAddressLoading" class="text-sm text-slate-600">Загрузка…</div>
-        <div v-else class="flex flex-col sm:flex-row gap-3 sm:items-end">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-slate-600 mb-1" for="global-pickup-address">
-              Получение заказа по адресу
-            </label>
-            <textarea
-              id="global-pickup-address"
-              v-model="pickupAddressDraft"
-              rows="2"
-              class="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-              placeholder="пгт. Агинское, ул. Цыбикова 6в, магазин Руно"
-              maxlength="500"
-            />
-          </div>
-          <Button
-            type="button"
-            variant="primary"
-            class="shrink-0"
-            :disabled="pickupAddressSaving"
-            @click="savePickupAddressSetting"
-          >
-            {{ pickupAddressSaving ? 'Сохранение…' : 'Сохранить адрес' }}
-          </Button>
-        </div>
-      </div>
 
       <div class="rounded-lg border border-neutral-200 p-4">
         <div v-if="loading" class="text-slate-600">Загрузка...</div>

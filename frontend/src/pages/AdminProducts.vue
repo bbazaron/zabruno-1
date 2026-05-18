@@ -58,6 +58,10 @@ const { showToast } = useToast()
 const products = ref<AdminProduct[]>([])
 const defaultSchoolColors = ref<string[]>([])
 const defaultColorDraft = ref('')
+const showPickupAddressPanel = ref(false)
+const pickupAddressDraft = ref('')
+const pickupAddressSaving = ref(false)
+const pickupAddressLoading = ref(false)
 const showDefaultSchoolColorsPanel = ref(false)
 const showCategoriesPanel = ref(false)
 const showProductFormPanel = ref(false)
@@ -113,6 +117,43 @@ function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('token')
   if (token) headers.Authorization = `Bearer ${token}`
   return headers
+}
+
+async function loadPickupAddressSetting() {
+  pickupAddressLoading.value = true
+  try {
+    const res = await axios.get<{ pickup_address?: string }>('/api/admin/settings/pickup-address', {
+      headers: getAuthHeaders(),
+    })
+    pickupAddressDraft.value = String(res.data?.pickup_address ?? '').trim()
+  } catch {
+    showToast('Не удалось загрузить адрес получения', 'error')
+  } finally {
+    pickupAddressLoading.value = false
+  }
+}
+
+async function savePickupAddressSetting() {
+  const value = pickupAddressDraft.value.trim()
+  if (!value) {
+    showToast('Укажите адрес получения', 'error')
+    return
+  }
+
+  pickupAddressSaving.value = true
+  try {
+    const res = await axios.patch<{ pickup_address?: string }>(
+      '/api/admin/settings/pickup-address',
+      { pickup_address: value },
+      { headers: getAuthHeaders() },
+    )
+    pickupAddressDraft.value = String(res.data?.pickup_address ?? value).trim()
+    showToast('Адрес получения сохранён', 'success')
+  } catch (err) {
+    showToast(formatApiError(err), 'error')
+  } finally {
+    pickupAddressSaving.value = false
+  }
 }
 
 function resetForm() {
@@ -565,9 +606,18 @@ const productSchoolColorsPreview = computed(() =>
   effectiveSchoolColors(defaultSchoolColors.value, excludedDefaults.value, formExtraColors.value),
 )
 
+const pickupAddressSubtitle = computed(() => {
+  if (showPickupAddressPanel.value) {
+    return 'Используется при оформлении и для новых заказов'
+  }
+  const preview = pickupAddressDraft.value.trim()
+  return preview || 'Нажмите, чтобы указать адрес'
+})
+
 onMounted(() => {
   resetForm()
   void loadProducts()
+  void loadPickupAddressSetting()
 })
 </script>
 
@@ -595,6 +645,55 @@ onMounted(() => {
         <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами
         </Button>
+      </div>
+
+      <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 mb-6 shadow-sm">
+        <button
+          type="button"
+          class="flex w-full cursor-pointer items-start gap-3 text-left"
+          :aria-expanded="showPickupAddressPanel"
+          @click="showPickupAddressPanel = !showPickupAddressPanel"
+        >
+          <ChevronDown
+            :size="20"
+            class="mt-0.5 shrink-0 text-slate-500 transition-transform duration-200"
+            :class="showPickupAddressPanel ? 'rotate-180' : ''"
+          />
+          <span class="min-w-0 flex-1">
+            <span class="block text-lg font-medium text-slate-900">Адрес получения заказов</span>
+            <span class="block text-sm text-slate-600 line-clamp-2">{{ pickupAddressSubtitle }}</span>
+          </span>
+        </button>
+        <div v-if="showPickupAddressPanel" class="mt-4 border-t border-neutral-100 pt-4">
+          <p class="text-xs text-slate-500 mb-3">
+            Используется при оформлении и для новых заказов. В карточке заказа адрес можно изменить отдельно.
+          </p>
+          <div v-if="pickupAddressLoading" class="text-sm text-slate-600">Загрузка…</div>
+          <div v-else class="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div class="flex-1">
+              <label class="block text-xs font-medium text-slate-600 mb-1" for="global-pickup-address">
+                Получение заказа по адресу
+              </label>
+              <textarea
+                id="global-pickup-address"
+                v-model="pickupAddressDraft"
+                rows="2"
+                :class="inputClass"
+                placeholder="пгт. Агинское, ул. Цыбикова 6в, магазин Руно"
+                maxlength="500"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              class="shrink-0"
+              :disabled="pickupAddressSaving"
+              @click="savePickupAddressSetting"
+            >
+              {{ pickupAddressSaving ? 'Сохранение…' : 'Сохранить адрес' }}
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 mb-6 shadow-sm">
