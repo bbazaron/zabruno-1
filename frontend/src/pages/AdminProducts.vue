@@ -12,6 +12,7 @@ import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 import {
   effectiveSchoolColors,
   productSchoolColorConfigFromLegacy,
+  sortSchoolColorOptions,
 } from '../utils/productSchoolColors'
 import {
   defaultProductSizes,
@@ -58,6 +59,9 @@ const { showToast } = useToast()
 const products = ref<AdminProduct[]>([])
 const defaultSchoolColors = ref<string[]>([])
 const defaultColorDraft = ref('')
+const defaultColorRenames = ref<Array<{ from: string; to: string }>>([])
+const editingDefaultColorValue = ref<string | null>(null)
+const editingDefaultColorDraft = ref('')
 const showPickupAddressPanel = ref(false)
 const pickupAddressDraft = ref('')
 const pickupAddressSaving = ref(false)
@@ -265,6 +269,32 @@ function removeExtraColor(index: number) {
   formExtraColors.value = formExtraColors.value.filter((_, idx) => idx !== index)
 }
 
+const sortedDefaultSchoolColors = computed(() => sortSchoolColorOptions(defaultSchoolColors.value))
+
+function setDefaultSchoolColors(next: string[]) {
+  defaultSchoolColors.value = sortSchoolColorOptions(next)
+}
+
+function recordDefaultColorRename(from: string, to: string) {
+  if (from === to) return
+  const chained = defaultColorRenames.value.find((row) => row.to === from)
+  if (chained) {
+    chained.to = to
+    return
+  }
+  const existing = defaultColorRenames.value.find((row) => row.from === from)
+  if (existing) {
+    existing.to = to
+    return
+  }
+  defaultColorRenames.value = [...defaultColorRenames.value, { from, to }]
+}
+
+function applyDefaultColorRenameInForm(oldName: string, newName: string) {
+  excludedDefaults.value = excludedDefaults.value.map((item) => (item === oldName ? newName : item))
+  formExtraColors.value = formExtraColors.value.map((item) => (item === oldName ? newName : item))
+}
+
 function addDefaultColorFromDraft() {
   const next = defaultColorDraft.value.trim()
   if (!next) return
@@ -272,7 +302,7 @@ function addDefaultColorFromDraft() {
     defaultColorDraft.value = ''
     return
   }
-  defaultSchoolColors.value = [...defaultSchoolColors.value, next]
+  setDefaultSchoolColors([...defaultSchoolColors.value, next])
   defaultColorDraft.value = ''
 }
 
@@ -281,11 +311,50 @@ function onDefaultColorDraftEnter(event: KeyboardEvent) {
   addDefaultColorFromDraft()
 }
 
-function removeDefaultColor(index: number) {
-  defaultSchoolColors.value = defaultSchoolColors.value.filter((_, idx) => idx !== index)
-  excludedDefaults.value = excludedDefaults.value.filter(
-    (item) => defaultSchoolColors.value.includes(item),
-  )
+function startEditDefaultColor(value: string) {
+  editingDefaultColorValue.value = value
+  editingDefaultColorDraft.value = value
+}
+
+function cancelEditDefaultColor() {
+  editingDefaultColorValue.value = null
+  editingDefaultColorDraft.value = ''
+}
+
+function commitEditDefaultColor() {
+  const oldName = editingDefaultColorValue.value
+  if (!oldName) return
+
+  const next = editingDefaultColorDraft.value.trim()
+  if (!next) {
+    showToast('Введите название варианта', 'error')
+    return
+  }
+  if (next !== oldName && defaultSchoolColors.value.includes(next)) {
+    showToast('Такой вариант уже есть в списке', 'error')
+    return
+  }
+
+  if (next !== oldName) {
+    setDefaultSchoolColors(defaultSchoolColors.value.map((item) => (item === oldName ? next : item)))
+    recordDefaultColorRename(oldName, next)
+    applyDefaultColorRenameInForm(oldName, next)
+  }
+
+  cancelEditDefaultColor()
+}
+
+function onDefaultColorEditEnter(event: KeyboardEvent) {
+  event.preventDefault()
+  commitEditDefaultColor()
+}
+
+function removeDefaultColor(value: string) {
+  if (editingDefaultColorValue.value === value) {
+    cancelEditDefaultColor()
+  }
+  setDefaultSchoolColors(defaultSchoolColors.value.filter((item) => item !== value))
+  excludedDefaults.value = excludedDefaults.value.filter((item) => item !== value)
 }
 
 async function saveDefaultSchoolColors() {
@@ -293,12 +362,17 @@ async function saveDefaultSchoolColors() {
   try {
     const res = await axios.patch<{ default_school_colors?: string[] }>(
       '/api/admin/settings/default-school-colors',
-      { default_school_colors: defaultSchoolColors.value },
+      {
+        default_school_colors: sortedDefaultSchoolColors.value,
+        school_color_renames: defaultColorRenames.value,
+      },
       { headers: getAuthHeaders() },
     )
-    defaultSchoolColors.value = Array.isArray(res.data?.default_school_colors)
-      ? res.data.default_school_colors
-      : defaultSchoolColors.value
+    setDefaultSchoolColors(
+      Array.isArray(res.data?.default_school_colors) ? res.data.default_school_colors : defaultSchoolColors.value,
+    )
+    defaultColorRenames.value = []
+    cancelEditDefaultColor()
     showToast('Общий список школ и цветов сохранён', 'success')
     await loadProducts()
   } catch (err) {
@@ -513,9 +587,9 @@ async function loadProducts() {
       headers: getAuthHeaders(),
     })
     products.value = Array.isArray(res.data?.products) ? res.data.products : []
-    defaultSchoolColors.value = Array.isArray(res.data?.default_school_colors)
-      ? res.data.default_school_colors
-      : []
+    setDefaultSchoolColors(
+      Array.isArray(res.data?.default_school_colors) ? res.data.default_school_colors : [],
+    )
     if (Array.isArray(res.data?.categories)) {
       applyCategories(res.data.categories)
     }
@@ -741,21 +815,50 @@ onMounted(() => {
             />
             <Button type="button" variant="outline" @click="addDefaultColorFromDraft">Добавить</Button>
           </div>
-          <div v-if="defaultSchoolColors.length > 0" class="space-y-2">
+          <div v-if="sortedDefaultSchoolColors.length > 0" class="space-y-2">
+            <p class="text-xs text-slate-500">Сортировка по алфавиту</p>
             <div
-              v-for="(option, idx) in defaultSchoolColors"
-              :key="`default-${option}-${idx}`"
-              class="flex items-start justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-slate-700"
+              v-for="option in sortedDefaultSchoolColors"
+              :key="`default-${option}`"
+              class="flex flex-col gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between"
             >
-              <span class="min-w-0 break-words">{{ option }}</span>
-              <button
-                type="button"
-                class="shrink-0 text-slate-500 hover:text-red-600"
-                aria-label="Удалить из общего списка"
-                @click="removeDefaultColor(idx)"
-              >
-                ×
-              </button>
+              <template v-if="editingDefaultColorValue === option">
+                <input
+                  v-model="editingDefaultColorDraft"
+                  type="text"
+                  :class="inputClass"
+                  maxlength="255"
+                  @keydown.enter="onDefaultColorEditEnter"
+                />
+                <div class="flex shrink-0 gap-2">
+                  <Button type="button" variant="primary" size="sm" @click="commitEditDefaultColor">
+                    Готово
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" @click="cancelEditDefaultColor">
+                    Отмена
+                  </Button>
+                </div>
+              </template>
+              <template v-else>
+                <span class="min-w-0 break-words">{{ option }}</span>
+                <div class="flex shrink-0 gap-3">
+                  <button
+                    type="button"
+                    class="text-slate-600 hover:text-slate-900"
+                    @click="startEditDefaultColor(option)"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    type="button"
+                    class="text-slate-500 hover:text-red-600"
+                    aria-label="Удалить из общего списка"
+                    @click="removeDefaultColor(option)"
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </template>
             </div>
           </div>
           <Button type="button" variant="primary" :disabled="savingDefaults" @click="saveDefaultSchoolColors">
@@ -907,7 +1010,7 @@ onMounted(() => {
                 <p class="text-xs font-medium text-slate-600 mb-2">Из общего списка</p>
                 <div class="space-y-2">
                   <label
-                    v-for="option in defaultSchoolColors"
+                    v-for="option in sortedDefaultSchoolColors"
                     :key="`toggle-${option}`"
                     class="flex cursor-pointer items-start gap-2 text-sm text-slate-700"
                   >

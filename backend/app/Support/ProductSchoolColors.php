@@ -16,12 +16,64 @@ final class ProductSchoolColors
      */
     public static function defaults(): array
     {
-        return self::parseList(Setting::getValue(self::SETTING_KEY, ''));
+        return self::sortList(self::parseList(Setting::getValue(self::SETTING_KEY, '')));
     }
 
     public static function storeDefaults(array $items): void
     {
-        Setting::setValue(self::SETTING_KEY, self::serializeList($items) ?? '');
+        Setting::setValue(self::SETTING_KEY, self::serializeList(self::sortList($items)) ?? '');
+    }
+
+    /**
+     * @param  list<array{from: string, to: string}>  $renames
+     */
+    public static function applyRenames(array $renames): void
+    {
+        $map = [];
+        foreach ($renames as $row) {
+            $from = trim((string) ($row['from'] ?? ''));
+            $to = trim((string) ($row['to'] ?? ''));
+            if ($from === '' || $to === '' || $from === $to) {
+                continue;
+            }
+            $map[$from] = $to;
+        }
+
+        if ($map === []) {
+            return;
+        }
+
+        Product::query()->chunkById(100, static function ($products) use ($map): void {
+            foreach ($products as $product) {
+                $excluded = self::parseList($product->school_color_excluded);
+                $extra = self::parseList($product->school_color_extra);
+                $legacy = self::parseList($product->color);
+
+                $newExcluded = self::renameInList($excluded, $map);
+                $newExtra = self::renameInList($extra, $map);
+                $newLegacy = self::renameInList($legacy, $map);
+
+                $excludedChanged = $newExcluded !== $excluded;
+                $extraChanged = $newExtra !== $extra;
+                $legacyChanged = $newLegacy !== $legacy;
+
+                if (! $excludedChanged && ! $extraChanged && ! $legacyChanged) {
+                    continue;
+                }
+
+                if ($excludedChanged) {
+                    $product->school_color_excluded = self::serializeList($newExcluded);
+                }
+                if ($extraChanged) {
+                    $product->school_color_extra = self::serializeList($newExtra);
+                }
+                if ($legacyChanged) {
+                    $product->color = self::serializeList($newLegacy);
+                }
+
+                $product->save();
+            }
+        });
     }
 
     /**
@@ -35,7 +87,7 @@ final class ProductSchoolColors
         $legacy = self::parseList($product->color);
 
         if ($excluded === [] && $extra === [] && $legacy !== []) {
-            return $legacy;
+            return self::sortList($legacy);
         }
 
         $activeDefaults = array_values(array_filter(
@@ -43,7 +95,7 @@ final class ProductSchoolColors
             static fn (string $item): bool => ! in_array($item, $excluded, true),
         ));
 
-        return self::normalizeList(array_merge($activeDefaults, $extra));
+        return self::sortList(self::normalizeList(array_merge($activeDefaults, $extra)));
     }
 
     /**
@@ -89,7 +141,41 @@ final class ProductSchoolColors
             static fn (string $item): bool => ! in_array($item, $excluded, true),
         ));
 
-        return self::normalizeList(array_merge($activeDefaults, $extra));
+        return self::sortList(self::normalizeList(array_merge($activeDefaults, $extra)));
+    }
+
+    /**
+     * @param  list<string>  $items
+     * @param  array<string, string>  $map
+     * @return list<string>
+     */
+    private static function renameInList(array $items, array $map): array
+    {
+        $out = [];
+        foreach ($items as $item) {
+            $out[] = $map[$item] ?? $item;
+        }
+
+        return self::normalizeList($out);
+    }
+
+    /**
+     * @param  list<string>  $items
+     * @return list<string>
+     */
+    private static function sortList(array $items): array
+    {
+        $sorted = self::normalizeList($items);
+        if (class_exists(\Collator::class)) {
+            $collator = new \Collator('ru_RU');
+            usort($sorted, static fn (string $a, string $b): int => $collator->compare($a, $b));
+
+            return $sorted;
+        }
+
+        sort($sorted, SORT_LOCALE_STRING);
+
+        return $sorted;
     }
 
     /**

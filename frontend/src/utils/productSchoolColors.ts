@@ -39,6 +39,11 @@ export function normalizeSchoolColorOptions(raw: string[]): string[] {
   return out
 }
 
+/** Alphabetical order for display (Russian locale). */
+export function sortSchoolColorOptions(options: string[]): string[] {
+  return [...options].sort((a, b) => a.localeCompare(b, 'ru', { sensitivity: 'base' }))
+}
+
 export function serializeSchoolColorOptions(options: string[]): string | null {
   const normalized = normalizeSchoolColorOptions(options)
   if (normalized.length === 0) return null
@@ -51,7 +56,7 @@ export function effectiveSchoolColors(
   extra: string[],
 ): string[] {
   const activeDefaults = defaults.filter((item) => !excluded.includes(item))
-  return normalizeSchoolColorOptions([...activeDefaults, ...extra])
+  return sortSchoolColorOptions(normalizeSchoolColorOptions([...activeDefaults, ...extra]))
 }
 
 export function productSchoolColorConfigFromLegacy(
