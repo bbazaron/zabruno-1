@@ -105,13 +105,8 @@ class AdminProductController extends Controller
         if (array_key_exists('image', $validated)) {
             $validated['image'] = $this->sanitizeImagePath($validated['image']);
         }
-        if (
-            $request->has('school_color_excluded')
-            || $request->has('school_color_extra')
-            || $request->has('school_colors')
-        ) {
-            $validated = array_merge($validated, $this->resolveSchoolColorFields($request));
-        }
+        // Always apply school/color config on admin update (empty excluded[] is omitted from FormData).
+        $validated = array_merge($validated, $this->resolveSchoolColorFields($request));
         unset($validated['school_colors']);
         if (array_key_exists('sizes', $validated)) {
             $validated['sizes'] = $this->normalizeSizesList($validated['sizes']);
@@ -173,21 +168,22 @@ class AdminProductController extends Controller
      */
     private function resolveSchoolColorFields(Request $request): array
     {
-        if ($request->has('school_color_excluded') || $request->has('school_color_extra')) {
+        if (
+            $request->has('school_colors')
+            && ! $request->has('school_color_excluded')
+            && ! $request->has('school_color_extra')
+        ) {
+            $legacy = $request->input('school_colors');
+            $config = is_array($legacy)
+                ? ProductSchoolColors::productConfigFromLegacyColor(
+                    ProductSchoolColors::serializeList($legacy),
+                )
+                : ['excluded' => [], 'extra' => []];
+            $excluded = $config['excluded'];
+            $extra = $config['extra'];
+        } else {
             $excluded = ProductSchoolColors::parseList($request->input('school_color_excluded'));
             $extra = ProductSchoolColors::parseList($request->input('school_color_extra'));
-        } else {
-            $legacy = $request->input('school_colors');
-            if (is_array($legacy)) {
-                $config = ProductSchoolColors::productConfigFromLegacyColor(
-                    ProductSchoolColors::serializeList($legacy),
-                );
-                $excluded = $config['excluded'];
-                $extra = $config['extra'];
-            } else {
-                $excluded = [];
-                $extra = [];
-            }
         }
 
         $effective = ProductSchoolColors::mergeConfig($excluded, $extra);
