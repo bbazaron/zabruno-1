@@ -131,6 +131,7 @@ class OrderService
             $total += $lineTotal;
 
             $lines[] = [
+                'product_id' => $product->id,
                 'product_name' => (string) $product->name,
                 'quantity' => $qty,
                 'size_override' => $cartItem->selected_size,
@@ -189,6 +190,7 @@ class OrderService
             foreach ($lines as $index => $line) {
                 $order->items()->create([
                     'position' => $index,
+                    'product_id' => $line['product_id'] ?? null,
                     'product_name' => $line['product_name'],
                     'quantity' => $line['quantity'],
                     'size_override' => $line['size_override'],

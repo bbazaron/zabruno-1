@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Support\ProductSales;
 use App\Support\ProductSchoolColors;
 use Illuminate\Http\Request;
 
@@ -22,21 +23,24 @@ class ProductController extends Controller
             $query->where('category', $request->category);
         }
 
-        // Можно добавить сортировку
-        if ($request->has('sortBy')) {
-            switch ($request->sortBy) {
-                case 'price-asc':
-                    $query->orderBy('price', 'asc');
-                    break;
-                case 'price-desc':
-                    $query->orderBy('price', 'desc');
-                    break;
-                case 'new':
-                    $query->orderBy('created_at', 'desc');
-                    break;
-                default:
-                    break;
-            }
+        $sortBy = $request->input('sortBy', 'popular');
+
+        switch ($sortBy) {
+            case 'price-asc':
+                $query->orderBy('price', 'asc');
+                break;
+            case 'price-desc':
+                $query->orderBy('price', 'desc');
+                break;
+            case 'new':
+                $query->orderBy('created_at', 'desc');
+                break;
+            case 'popular':
+            default:
+                ProductSales::applySalesCountSubquery($query)
+                    ->orderByDesc('sales_count')
+                    ->orderBy('products.id');
+                break;
         }
 
         $products = $query->get();
