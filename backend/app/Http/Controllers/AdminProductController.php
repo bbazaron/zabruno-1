@@ -54,6 +54,8 @@ class AdminProductController extends Controller
             'in_stock' => 'sometimes|boolean',
             'media' => 'sometimes|array|max:10',
             'media.*' => 'file|mimes:jpg,jpeg,png,webp|max:5120',
+            'media_sequence' => 'sometimes|array|max:10',
+            'media_sequence.*' => ['required', 'string', 'regex:/^(id:\d+|file:\d+)$/'],
         ]);
 
         if (! array_key_exists('in_stock', $validated)) {
@@ -66,7 +68,7 @@ class AdminProductController extends Controller
 
         $product = DB::transaction(function () use ($request, $validated) {
             $product = Product::create($validated);
-            $this->storeUploadedMedia($product, $request);
+            $this->applyMediaSequence($product, $request);
             $this->refreshPrimaryImage($product);
 
             return $product->fresh(['media']);
@@ -101,6 +103,14 @@ class AdminProductController extends Controller
             'media.*' => 'file|mimes:jpg,jpeg,png,webp|max:5120',
             'remove_media_ids' => 'sometimes|array',
             'remove_media_ids.*' => 'integer',
+            'media_sequence' => 'sometimes|array|max:10',
+            'media_sequence.*' => ['required', 'string', 'regex:/^(id:\d+|file:\d+)$/'],
+            'media_catalog_zoom' => 'sometimes|array',
+            'media_catalog_zoom.*' => 'integer|min:100|max:250',
+            'media_catalog_pan_x' => 'sometimes|array',
+            'media_catalog_pan_x.*' => 'integer|min:-100|max:100',
+            'media_catalog_pan_y' => 'sometimes|array',
+            'media_catalog_pan_y.*' => 'integer|min:-100|max:100',
         ]);
         if (array_key_exists('image', $validated)) {
             $validated['image'] = $this->sanitizeImagePath($validated['image']);
@@ -127,7 +137,8 @@ class AdminProductController extends Controller
                 }
             }
 
-            $this->storeUploadedMedia($product, $request);
+            $this->applyMediaSequence($product, $request);
+            $this->applyCatalogMediaSettings($product, $request);
             $this->refreshPrimaryImage($product);
 
             return $product->fresh(['media']);
@@ -193,6 +204,106 @@ class AdminProductController extends Controller
             'school_color_extra' => ProductSchoolColors::serializeList($extra),
             'color' => ProductSchoolColors::serializeList($effective),
         ];
+    }
+
+    private function applyMediaSequence(Product $product, Request $request): void
+    {
+        $sequence = array_values(array_filter(
+            (array) $request->input('media_sequence', []),
+            static fn ($slot): bool => is_string($slot) && $slot !== '',
+        ));
+
+        if ($sequence === []) {
+            $this->storeUploadedMedia($product, $request);
+
+            return;
+        }
+
+        $files = array_values(array_filter((array) $request->file('media', [])));
+        $sortOrder = 0;
+
+        foreach ($sequence as $slot) {
+            if (preg_match('/^id:(\d+)$/', (string) $slot, $matches)) {
+                $media = $product->media()->find((int) $matches[1]);
+                if ($media) {
+                    $media->update(['sort_order' => $sortOrder++]);
+                }
+
+                continue;
+            }
+
+            if (! preg_match('/^file:(\d+)$/', (string) $slot, $matches)) {
+                continue;
+            }
+
+            $file = $files[(int) $matches[1]] ?? null;
+            if (! $file) {
+                continue;
+            }
+
+            $path = $file->store('products', 'public');
+            $product->media()->create([
+                'path' => $path,
+                'sort_order' => $sortOrder++,
+            ]);
+        }
+    }
+
+    private function applyCatalogMediaSettings(Product $product, Request $request): void
+    {
+        $zoomById = (array) $request->input('media_catalog_zoom', []);
+        $panXById = (array) $request->input('media_catalog_pan_x', []);
+        $panYById = (array) $request->input('media_catalog_pan_y', []);
+        $ids = array_unique(array_merge(array_keys($zoomById), array_keys($panXById), array_keys($panYById)));
+
+        foreach ($ids as $id) {
+            $mediaId = (int) $id;
+            if ($mediaId <= 0) {
+                continue;
+            }
+
+            $updates = [];
+            if (array_key_exists($id, $zoomById)) {
+                $updates['catalog_zoom'] = $this->clampCatalogZoom($zoomById[$id]);
+            }
+            if (array_key_exists($id, $panXById)) {
+                $updates['catalog_pan_x'] = $this->clampCatalogPan($panXById[$id]);
+            }
+            if (array_key_exists($id, $panYById)) {
+                $updates['catalog_pan_y'] = $this->clampCatalogPan($panYById[$id]);
+            }
+            if ($updates === []) {
+                continue;
+            }
+
+            $product->media()->where('id', $mediaId)->update($updates);
+        }
+    }
+
+    private function clampCatalogZoom(mixed $value): int
+    {
+        $zoom = (int) $value;
+        if ($zoom < 100) {
+            return 100;
+        }
+        if ($zoom > 250) {
+            return 250;
+        }
+
+        return $zoom;
+    }
+
+    private function clampCatalogPan(mixed $value): int
+    {
+        $pan = (int) $value;
+        if ($pan < -100) {
+            return -100;
+        }
+        if ($pan > 100) {
+            return 100;
+        }
+
+        return $pan;
     }
 
     private function storeUploadedMedia(Product $product, Request $request): void

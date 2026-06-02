@@ -6,6 +6,14 @@ import axios from 'axios'
  * подставляет его к относительному пути — запрос уходит не на Laravel, картинка не находится,
  * показывается только alt. Нормализуем к базе бэкенда (axios.defaults.baseURL).
  */
+export function resolveProductMediaUrl(
+  entry: string | { url?: string | null } | null | undefined,
+): string {
+  if (!entry) return ''
+  if (typeof entry === 'string') return resolveBackendMediaUrl(entry)
+  return resolveBackendMediaUrl(entry.url)
+}
+
 export function resolveBackendMediaUrl(raw: string | null | undefined): string {
   const s = String(raw ?? '').trim()
   if (!s) return ''

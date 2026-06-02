@@ -9,6 +9,8 @@ import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import { clampCatalogCrop, type CatalogCrop } from '../utils/catalogCrop'
+import CatalogMediaCropEditor from '../components/admin/CatalogMediaCropEditor.vue'
 import {
   effectiveSchoolColors,
   productSchoolColorConfigFromLegacy,
@@ -47,6 +49,9 @@ interface AdminProduct {
     id: number
     path: string
     sort_order: number
+    catalog_zoom?: number
+    catalog_pan_x?: number
+    catalog_pan_y?: number
   }>
   description: string | null
   in_stock: boolean
@@ -89,7 +94,14 @@ const colorDraft = ref('')
 const formSizes = ref<string[]>([])
 const sizeDraft = ref('')
 const formMediaFiles = ref<File[]>([])
-const existingMedia = ref<Array<{ id: number; path: string; sort_order: number }>>([])
+const existingMedia = ref<
+  Array<{
+    id: number
+    path: string
+    sort_order: number
+    catalog_crop: CatalogCrop
+  }>
+>([])
 const removeMediaIds = ref<number[]>([])
 const mediaInputKey = ref(0)
 const formDescription = ref('')
@@ -209,7 +221,20 @@ function fillForm(p: AdminProduct) {
   formSizes.value = parsedSizes.length > 0 ? parsedSizes : defaultProductSizes()
   sizeDraft.value = ''
   formMediaFiles.value = []
-  existingMedia.value = Array.isArray(p.media) ? [...p.media].sort((a, b) => a.sort_order - b.sort_order) : []
+  existingMedia.value = Array.isArray(p.media)
+    ? [...p.media]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((media) => ({
+          id: media.id,
+          path: media.path,
+          sort_order: media.sort_order,
+          catalog_crop: clampCatalogCrop({
+            catalog_zoom: media.catalog_zoom,
+            catalog_pan_x: media.catalog_pan_x,
+            catalog_pan_y: media.catalog_pan_y,
+          }),
+        }))
+    : []
   removeMediaIds.value = []
   mediaInputKey.value += 1
   formDescription.value = p.description ?? ''
@@ -482,6 +507,13 @@ function buildFormData(): FormData {
   }
   for (const mediaId of removeMediaIds.value) {
     fd.append('remove_media_ids[]', String(mediaId))
+  }
+  for (const media of existingMedia.value) {
+    if (existingMediaMarkedForRemoval(media.id)) continue
+    const crop = clampCatalogCrop(media.catalog_crop)
+    fd.append(`media_catalog_zoom[${media.id}]`, String(crop.catalog_zoom))
+    fd.append(`media_catalog_pan_x[${media.id}]`, String(crop.catalog_pan_x))
+    fd.append(`media_catalog_pan_y[${media.id}]`, String(crop.catalog_pan_y))
   }
   for (const size of formSizes.value) {
     fd.append('sizes[]', size)
@@ -1102,42 +1134,45 @@ onMounted(() => {
           </div>
           <div class="md:col-span-2">
             <label class="block text-xs font-medium text-slate-600 mb-2">Изображения товара (размер до 5мб)</label>
-            <div v-if="editingId != null && existingMedia.length > 0" class="mb-3 space-y-2">
-              <p class="text-xs text-slate-500">Текущие изображения товара</p>
+            <div v-if="editingId != null && existingMedia.length > 0" class="mb-3 space-y-4">
+              <p class="text-xs text-slate-500">
+                Текущие изображения — настройте кадр для каталога (как в мобильном приложении).
+              </p>
               <div
                 v-for="media in existingMedia"
                 :key="media.id"
-                class="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-3 py-2"
+                class="space-y-3 rounded-md border border-neutral-200 bg-white px-3 py-3"
+                :class="existingMediaMarkedForRemoval(media.id) ? 'opacity-50' : ''"
               >
-                <div class="flex min-w-0 items-center gap-3">
-                  <img
-                    :src="resolveBackendMediaUrl(media.path)"
-                    alt=""
-                    class="h-12 w-12 rounded object-cover border border-neutral-200"
-                  />
+                <div class="flex flex-wrap items-start justify-between gap-2">
                   <div class="min-w-0">
                     <p class="truncate text-sm text-slate-800">{{ media.path.split('/').pop() }}</p>
                     <p class="text-xs text-slate-500">
                       {{ media.sort_order === 0 ? 'Главное изображение' : `Позиция ${media.sort_order + 1}` }}
                     </p>
                   </div>
+                  <button
+                    v-if="!existingMediaMarkedForRemoval(media.id)"
+                    type="button"
+                    class="shrink-0 text-xs text-red-600 underline hover:text-red-800"
+                    @click="markExistingMediaForRemoval(media.id)"
+                  >
+                    Удалить
+                  </button>
+                  <button
+                    v-else
+                    type="button"
+                    class="shrink-0 text-xs text-slate-700 underline hover:text-slate-900"
+                    @click="restoreExistingMedia(media.id)"
+                  >
+                    Отменить удаление
+                  </button>
                 </div>
-                <button
+                <CatalogMediaCropEditor
                   v-if="!existingMediaMarkedForRemoval(media.id)"
-                  type="button"
-                  class="shrink-0 text-xs text-red-600 underline hover:text-red-800"
-                  @click="markExistingMediaForRemoval(media.id)"
-                >
-                  Удалить
-                </button>
-                <button
-                  v-else
-                  type="button"
-                  class="shrink-0 text-xs text-slate-700 underline hover:text-slate-900"
-                  @click="restoreExistingMedia(media.id)"
-                >
-                  Отменить удаление
-                </button>
+                  :image-url="resolveBackendMediaUrl(media.path)"
+                  v-model="media.catalog_crop"
+                />
               </div>
               <p v-if="removeMediaIds.length > 0" class="text-xs text-amber-700">
                 Выбрано к удалению: {{ removeMediaIds.length }}. Удаление произойдет после сохранения.

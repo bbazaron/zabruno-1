@@ -8,7 +8,7 @@ import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import { resolveBackendMediaUrl, resolveProductMediaUrl } from '../utils/resolveBackendMediaUrl'
 import { useToast } from '../composables/useToast'
 import {
   parseSchoolColorOptions,
@@ -40,6 +40,8 @@ const availableSizes = ref<string[]>([])
 const availableClassNumbers = Array.from({ length: 11 }, (_, i) => String(i + 1))
 const availableClassLetters = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'К', 'Л', 'М']
 const cartByVariant = ref<Record<string, number>>({})
+
+type ProductMediaEntry = string | { url?: string | null }
 
 const selectClass =
   'w-full max-w-md px-3 py-2 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900'
@@ -105,13 +107,17 @@ onMounted(fetchProduct)
 function selectMedia(url: string) {
   selectedMedia.value = resolveBackendMediaUrl(url)
   const mediaList = Array.isArray(product.value?.media) ? product.value.media : []
-  const idx = mediaList.findIndex((item: string) => resolveBackendMediaUrl(item) === selectedMedia.value)
+  const idx = mediaList.findIndex(
+    (item: ProductMediaEntry) => resolveProductMediaUrl(item) === selectedMedia.value,
+  )
   activeMediaIndex.value = idx >= 0 ? idx : 0
 }
 
 function mediaListResolved(): string[] {
   const list = Array.isArray(product.value?.media) ? product.value.media : []
-  return list.map((item: string) => resolveBackendMediaUrl(item)).filter(Boolean)
+  return list
+    .map((item: ProductMediaEntry) => resolveProductMediaUrl(item))
+    .filter(Boolean)
 }
 
 function openMediaViewer() {
@@ -281,11 +287,11 @@ async function addToCartAction() {
           <div class="flex flex-wrap gap-3">
             <button
               v-for="media in product.media"
-              :key="media"
-              @click="selectMedia(media)"
+              :key="resolveProductMediaUrl(media)"
+              @click="selectMedia(resolveProductMediaUrl(media))"
               class="border rounded overflow-hidden hover:border-slate-900"
             >
-              <img :src="resolveBackendMediaUrl(media)" class="w-20 h-20 object-cover" />
+              <img :src="resolveProductMediaUrl(media)" class="w-20 h-20 object-cover" />
             </button>
           </div>
         </div>

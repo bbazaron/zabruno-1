@@ -9,6 +9,11 @@ import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart, Filter, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import {
+  catalogCropImageStyle,
+  clampCatalogCrop,
+  DEFAULT_CATALOG_CROP,
+} from '../utils/catalogCrop'
 import { useToast } from '../composables/useToast'
 import { parseSchoolColorOptions } from '../utils/productSchoolColors'
 import {
@@ -19,12 +24,19 @@ import {
 
 type GenderFilter = 'all' | 'boys' | 'girls'
 
+interface CatalogMediaItem {
+  url: string
+  catalog_zoom: number
+  catalog_pan_x: number
+  catalog_pan_y: number
+}
+
 interface CatalogProduct {
   id: number
   name: string
   description: string
   image: string
-  media: string[]
+  media: CatalogMediaItem[]
   gender: string
   category: string
   color?: string | null
@@ -39,7 +51,7 @@ interface BackendCatalogProduct {
   name: string
   description: string
   image: string
-  media?: string[]
+  media?: Array<string | CatalogMediaItem | { url?: string; catalog_zoom?: number; catalog_pan_x?: number; catalog_pan_y?: number }>
   gender: string
   category: string
   color?: string | null
@@ -95,13 +107,13 @@ async function fetchProducts() {
     })
     const rows: BackendCatalogProduct[] = Array.isArray(response.data) ? response.data : []
     products.value = rows.map((row) => {
-      const media = Array.isArray(row.media) ? row.media : []
+      const media = normalizeCatalogMedia(row.media, row.image)
       return {
         id: row.id,
         name: row.name,
         description: row.description,
         image: row.image,
-        media: media.length > 0 ? media : row.image ? [row.image] : [],
+        media,
         gender: row.gender,
         category: row.category,
         color: row.color ?? null,
@@ -328,8 +340,39 @@ function cartQuantity(productId: number): number {
   return total
 }
 
-function resolvedMedia(product: CatalogProduct): string[] {
-  return product.media.map((m) => resolveBackendMediaUrl(m)).filter(Boolean)
+function normalizeCatalogMedia(
+  raw: BackendCatalogProduct['media'],
+  fallbackImage?: string,
+): CatalogMediaItem[] {
+  const rows = Array.isArray(raw) ? raw : []
+  const items = rows
+    .map((entry): CatalogMediaItem | null => {
+      if (typeof entry === 'string') {
+        const url = resolveBackendMediaUrl(entry)
+        if (!url) return null
+        return { url, ...DEFAULT_CATALOG_CROP }
+      }
+      const url = resolveBackendMediaUrl(entry.url ?? '')
+      if (!url) return null
+      const crop = clampCatalogCrop({
+        catalog_zoom: entry.catalog_zoom,
+        catalog_pan_x: entry.catalog_pan_x,
+        catalog_pan_y: entry.catalog_pan_y,
+      })
+      return { url, ...crop }
+    })
+    .filter((item): item is CatalogMediaItem => item != null)
+
+  if (items.length > 0) return items
+
+  const fallbackUrl = resolveBackendMediaUrl(fallbackImage ?? '')
+  if (!fallbackUrl) return []
+
+  return [{ url: fallbackUrl, ...DEFAULT_CATALOG_CROP }]
+}
+
+function resolvedMedia(product: CatalogProduct): CatalogMediaItem[] {
+  return product.media
 }
 
 function currentMediaIndex(product: CatalogProduct): number {
@@ -503,14 +546,14 @@ function changeProductMedia(product: CatalogProduct, step: number) {
                       :style="{ transform: slideOffsetStyle(product) }"
                     >
                       <div
-                        v-for="(mediaUrl, mediaIdx) in resolvedMedia(product)"
-                        :key="`${product.id}-${mediaIdx}-${mediaUrl}`"
-                        class="h-full w-full min-w-full overflow-hidden"
+                        v-for="(mediaItem, mediaIdx) in resolvedMedia(product)"
+                        :key="`${product.id}-${mediaIdx}-${mediaItem.url}`"
+                        class="relative h-full w-full min-w-full overflow-hidden"
                       >
                         <img
-                          :src="mediaUrl"
+                          :src="mediaItem.url"
                           :alt="product.name"
-                          class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          :style="catalogCropImageStyle(mediaItem)"
                         />
                       </div>
                     </div>
