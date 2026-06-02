@@ -9,11 +9,8 @@ import Typography from '../components/ui/Typography.vue'
 import { ShoppingCart, Filter, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
-import {
-  catalogCropImageStyle,
-  clampCatalogCrop,
-  DEFAULT_CATALOG_CROP,
-} from '../utils/catalogCrop'
+import CatalogCropViewport from '../components/catalog/CatalogCropViewport.vue'
+import { clampCatalogCrop, DEFAULT_CATALOG_CROP } from '../utils/catalogCrop'
 import { useToast } from '../composables/useToast'
 import { parseSchoolColorOptions } from '../utils/productSchoolColors'
 import {
@@ -545,17 +542,13 @@ function changeProductMedia(product: CatalogProduct, step: number) {
                       class="flex h-full transition-transform duration-500 ease-out"
                       :style="{ transform: slideOffsetStyle(product) }"
                     >
-                      <div
+                      <CatalogCropViewport
                         v-for="(mediaItem, mediaIdx) in resolvedMedia(product)"
                         :key="`${product.id}-${mediaIdx}-${mediaItem.url}`"
-                        class="relative h-full w-full min-w-full overflow-hidden"
-                      >
-                        <img
-                          :src="mediaItem.url"
-                          :alt="product.name"
-                          :style="catalogCropImageStyle(mediaItem)"
-                        />
-                      </div>
+                        :src="mediaItem.url"
+                        :crop="mediaItem"
+                        class="h-full w-full min-w-full"
+                      />
                     </div>
                     <button
                       v-if="resolvedMedia(product).length > 1"

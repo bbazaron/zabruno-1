@@ -57,6 +57,12 @@ interface AdminProduct {
   in_stock: boolean
 }
 
+interface SelectedMediaDraft {
+  file: File
+  preview_url: string
+  catalog_crop: CatalogCrop
+}
+
 const router = useRouter()
 const route = useRoute()
 const { showToast } = useToast()
@@ -93,7 +99,7 @@ const formExtraColors = ref<string[]>([])
 const colorDraft = ref('')
 const formSizes = ref<string[]>([])
 const sizeDraft = ref('')
-const formMediaFiles = ref<File[]>([])
+const formMediaFiles = ref<SelectedMediaDraft[]>([])
 const existingMedia = ref<
   Array<{
     id: number
@@ -173,6 +179,9 @@ async function savePickupAddressSetting() {
 }
 
 function resetForm() {
+  for (const draft of formMediaFiles.value) {
+    URL.revokeObjectURL(draft.preview_url)
+  }
   showProductFormPanel.value = false
   editingId.value = null
   formName.value = ''
@@ -195,6 +204,9 @@ function resetForm() {
 }
 
 function fillForm(p: AdminProduct) {
+  for (const draft of formMediaFiles.value) {
+    URL.revokeObjectURL(draft.preview_url)
+  }
   editingId.value = p.id
   formName.value = p.name
   formCategory.value = p.category
@@ -438,7 +450,7 @@ function onMediaFilesChange(event: Event) {
   if (files.length === 0) return
 
   const next = [...formMediaFiles.value]
-  const known = new Set(next.map(fileSignature))
+  const known = new Set(next.map((item) => fileSignature(item.file)))
   let skippedByType = 0
   let skippedByLimit = 0
 
@@ -455,7 +467,11 @@ function onMediaFilesChange(event: Event) {
       skippedByLimit += 1
       continue
     }
-    next.push(file)
+    next.push({
+      file,
+      preview_url: URL.createObjectURL(file),
+      catalog_crop: clampCatalogCrop(null),
+    })
     known.add(signature)
   }
 
@@ -471,6 +487,10 @@ function onMediaFilesChange(event: Event) {
 }
 
 function removeSelectedMediaFile(index: number) {
+  const draft = formMediaFiles.value[index]
+  if (draft) {
+    URL.revokeObjectURL(draft.preview_url)
+  }
   formMediaFiles.value = formMediaFiles.value.filter((_, idx) => idx !== index)
 }
 
@@ -502,8 +522,12 @@ function buildFormData(): FormData {
     }
     fd.append(key, String(value))
   }
-  for (const file of formMediaFiles.value) {
-    fd.append('media[]', file)
+  for (const [index, draft] of formMediaFiles.value.entries()) {
+    fd.append('media[]', draft.file)
+    const crop = clampCatalogCrop(draft.catalog_crop)
+    fd.append(`media_catalog_zoom[new:${index}]`, String(crop.catalog_zoom))
+    fd.append(`media_catalog_pan_x[new:${index}]`, String(crop.catalog_pan_x))
+    fd.append(`media_catalog_pan_y[new:${index}]`, String(crop.catalog_pan_y))
   }
   for (const mediaId of removeMediaIds.value) {
     fd.append('remove_media_ids[]', String(mediaId))
@@ -1196,19 +1220,29 @@ onMounted(() => {
               </label>
               <span class="text-xs text-slate-500">Выбрано {{ formMediaFiles.length }} из {{ MAX_MEDIA_FILES }}</span>
             </div>
-            <div v-if="formMediaFiles.length > 0" class="mt-3 space-y-2">
-              <div v-for="(file, idx) in formMediaFiles" :key="fileSignature(file)" :class="fileRowClass">
-                <div class="min-w-0">
-                  <p class="truncate text-sm text-slate-800">{{ file.name }}</p>
-                  <p class="text-xs text-slate-500">{{ formatFileSize(file.size) }}</p>
+            <div v-if="formMediaFiles.length > 0" class="mt-3 space-y-3">
+              <div
+                v-for="(draft, idx) in formMediaFiles"
+                :key="fileSignature(draft.file)"
+                class="space-y-3 rounded-md border border-neutral-200 bg-white p-3"
+              >
+                <div :class="fileRowClass">
+                  <div class="min-w-0">
+                    <p class="truncate text-sm text-slate-800">{{ draft.file.name }}</p>
+                    <p class="text-xs text-slate-500">{{ formatFileSize(draft.file.size) }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="shrink-0 text-xs text-red-600 underline hover:text-red-800"
+                    @click="removeSelectedMediaFile(idx)"
+                  >
+                    Убрать
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  class="shrink-0 text-xs text-red-600 underline hover:text-red-800"
-                  @click="removeSelectedMediaFile(idx)"
-                >
-                  Убрать
-                </button>
+                <CatalogMediaCropEditor
+                  :image-url="draft.preview_url"
+                  v-model="draft.catalog_crop"
+                />
               </div>
             </div>
           </div>

@@ -56,6 +56,12 @@ class AdminProductController extends Controller
             'media.*' => 'file|mimes:jpg,jpeg,png,webp|max:5120',
             'media_sequence' => 'sometimes|array|max:10',
             'media_sequence.*' => ['required', 'string', 'regex:/^(id:\d+|file:\d+)$/'],
+            'media_catalog_zoom' => 'sometimes|array',
+            'media_catalog_zoom.*' => 'integer|min:100|max:250',
+            'media_catalog_pan_x' => 'sometimes|array',
+            'media_catalog_pan_x.*' => 'integer|min:-100|max:100',
+            'media_catalog_pan_y' => 'sometimes|array',
+            'media_catalog_pan_y.*' => 'integer|min:-100|max:100',
         ]);
 
         if (! array_key_exists('in_stock', $validated)) {
@@ -69,6 +75,7 @@ class AdminProductController extends Controller
         $product = DB::transaction(function () use ($request, $validated) {
             $product = Product::create($validated);
             $this->applyMediaSequence($product, $request);
+            $this->applyCatalogMediaSettings($product, $request);
             $this->refreshPrimaryImage($product);
 
             return $product->fresh(['media']);
@@ -242,10 +249,14 @@ class AdminProductController extends Controller
             }
 
             $path = $file->store('products', 'public');
-            $product->media()->create([
-                'path' => $path,
-                'sort_order' => $sortOrder++,
-            ]);
+            $fileIndex = (int) ($matches[1] ?? 0);
+            $product->media()->create(array_merge(
+                [
+                    'path' => $path,
+                    'sort_order' => $sortOrder++,
+                ],
+                $this->catalogCropAttributesFromRequest($request, 'new:'.$fileIndex),
+            ));
         }
     }
 
@@ -257,27 +268,59 @@ class AdminProductController extends Controller
         $ids = array_unique(array_merge(array_keys($zoomById), array_keys($panXById), array_keys($panYById)));
 
         foreach ($ids as $id) {
+            if (is_string($id) && preg_match('/^new:\d+$/', $id) === 1) {
+                continue;
+            }
+
             $mediaId = (int) $id;
             if ($mediaId <= 0) {
                 continue;
             }
 
-            $updates = [];
-            if (array_key_exists($id, $zoomById)) {
-                $updates['catalog_zoom'] = $this->clampCatalogZoom($zoomById[$id]);
-            }
-            if (array_key_exists($id, $panXById)) {
-                $updates['catalog_pan_x'] = $this->clampCatalogPan($panXById[$id]);
-            }
-            if (array_key_exists($id, $panYById)) {
-                $updates['catalog_pan_y'] = $this->clampCatalogPan($panYById[$id]);
-            }
+            $updates = $this->catalogCropUpdatesFromRequest($request, (string) $id);
             if ($updates === []) {
                 continue;
             }
 
             $product->media()->where('id', $mediaId)->update($updates);
         }
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function catalogCropUpdatesFromRequest(Request $request, string $key): array
+    {
+        $zoomById = (array) $request->input('media_catalog_zoom', []);
+        $panXById = (array) $request->input('media_catalog_pan_x', []);
+        $panYById = (array) $request->input('media_catalog_pan_y', []);
+
+        $updates = [];
+        if (array_key_exists($key, $zoomById)) {
+            $updates['catalog_zoom'] = $this->clampCatalogZoom($zoomById[$key]);
+        }
+        if (array_key_exists($key, $panXById)) {
+            $updates['catalog_pan_x'] = $this->clampCatalogPan($panXById[$key]);
+        }
+        if (array_key_exists($key, $panYById)) {
+            $updates['catalog_pan_y'] = $this->clampCatalogPan($panYById[$key]);
+        }
+
+        return $updates;
+    }
+
+    /**
+     * @return array{catalog_zoom: int, catalog_pan_x: int, catalog_pan_y: int}
+     */
+    private function catalogCropAttributesFromRequest(Request $request, string $key): array
+    {
+        $updates = $this->catalogCropUpdatesFromRequest($request, $key);
+
+        return [
+            'catalog_zoom' => $updates['catalog_zoom'] ?? 100,
+            'catalog_pan_x' => $updates['catalog_pan_x'] ?? 0,
+            'catalog_pan_y' => $updates['catalog_pan_y'] ?? 0,
+        ];
     }
 
     private function clampCatalogZoom(mixed $value): int
@@ -313,15 +356,20 @@ class AdminProductController extends Controller
         }
 
         $nextSortOrder = (int) ($product->media()->max('sort_order') ?? -1) + 1;
+        $fileIndex = 0;
         foreach ((array) $request->file('media', []) as $file) {
             if (! $file) {
                 continue;
             }
             $path = $file->store('products', 'public');
-            $product->media()->create([
-                'path' => $path,
-                'sort_order' => $nextSortOrder++,
-            ]);
+            $product->media()->create(array_merge(
+                [
+                    'path' => $path,
+                    'sort_order' => $nextSortOrder++,
+                ],
+                $this->catalogCropAttributesFromRequest($request, 'new:'.$fileIndex),
+            ));
+            $fileIndex++;
         }
     }
 
