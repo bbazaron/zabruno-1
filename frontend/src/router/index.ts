@@ -17,6 +17,9 @@ import Contacts from '../pages/Contacts.vue'
 import AboutUs from '../pages/AboutUs.vue'
 import AboutSize from '../pages/AboutSize.vue'
 import HowToOrder from '../pages/HowToOrder.vue'
+import PublicOffer from '../pages/PublicOffer.vue'
+import PersonalDataPolicy from '../pages/PersonalDataPolicy.vue'
+import PersonalDataConsent from '../pages/PersonalDataConsent.vue'
 import Cart from '../pages/Cart.vue'
 import CartCheckout from '../pages/CartCheckout.vue'
 import axios from 'axios'
@@ -59,6 +62,24 @@ const routes = [
     name: 'HowToOrder',
     component: HowToOrder,
     meta: { title: 'Как заказать' },
+  },
+  {
+    path: '/public-offer',
+    name: 'PublicOffer',
+    component: PublicOffer,
+    meta: { title: 'Публичная оферта' },
+  },
+  {
+    path: '/personal-data-policy',
+    name: 'PersonalDataPolicy',
+    component: PersonalDataPolicy,
+    meta: { title: 'Политика обработки персональных данных' },
+  },
+  {
+    path: '/personal-data-consent',
+    name: 'PersonalDataConsent',
+    component: PersonalDataConsent,
+    meta: { title: 'Согласие на обработку персональных данных' },
   },
     {
         path: '/genderSelect',

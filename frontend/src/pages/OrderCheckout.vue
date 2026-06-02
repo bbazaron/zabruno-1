@@ -452,6 +452,12 @@ const orderEstimateLines = ref<OrderEstimateLine[]>([])
 
 const stepError = ref('')
 const submitError = ref('')
+const termsAccepted = ref(false)
+
+watch(termsAccepted, () => {
+  stepError.value = ''
+  submitError.value = ''
+})
 
 function formatOrderTotalRub(n: number): string {
   return new Intl.NumberFormat('ru-RU', {
@@ -696,6 +702,11 @@ function validateStep(n: number): boolean {
       stepError.value = 'Укажите телефон получателя'
       return false
     }
+  }
+  if (n === 6 && !termsAccepted.value) {
+    stepError.value =
+      'Необходимо принять условия оферты, ознакомиться с политикой конфиденциальности и дать согласие на обработку персональных данных'
+    return false
   }
   return true
 }
@@ -1581,6 +1592,33 @@ const summaryLines = computed(() => {
               Получение заказа по адресу: {{ defaultPickupAddress }}
 
             </Typography>
+            <div class="flex items-start gap-2.5">
+              <input
+                id="order-checkout-terms"
+                v-model="termsAccepted"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 shrink-0 rounded border border-neutral-300 text-slate-900 focus:ring-2 focus:ring-slate-500"
+              />
+              <label for="order-checkout-terms" class="text-xs text-slate-700 leading-snug cursor-pointer">
+                Я принимаю условия
+                <RouterLink
+                  to="/public-offer"
+                  class="text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                  @click.stop
+                >
+                  Публичной оферты
+                </RouterLink>,
+                ознакомлен(а) с
+                <RouterLink
+                  to="/personal-data-policy"
+                  class="text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                  @click.stop
+                >
+                  Политикой конфиденциальности
+                </RouterLink>
+                и даю согласие на обработку персональных данных
+              </label>
+            </div>
             <div
               v-if="submitError"
               class="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
@@ -1634,7 +1672,7 @@ const summaryLines = computed(() => {
                   type="button"
                   variant="primary"
                   class="w-full sm:w-auto min-w-[10rem]"
-                  :disabled="submitLoading"
+                  :disabled="submitLoading || !termsAccepted"
                   @click="submitOrder"
                 >
                   {{ submitLoading ? 'Переход…' : 'Перейти к оплате' }}

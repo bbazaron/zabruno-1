@@ -7,6 +7,9 @@
           <ul class="space-y-2 text-sm text-gray-300">
             <li><a href="/about" class="hover:text-white">О нас</a></li>
             <li><a href="/contacts" class="hover:text-white">Контакты</a></li>
+            <li><a href="/public-offer" class="hover:text-white">Публичная оферта</a></li>
+            <li><a href="/personal-data-policy" class="hover:text-white">Политика обработки персональных данных</a></li>
+            <li><a href="/personal-data-consent" class="hover:text-white">Согласие на обработку персональных данных</a></li>
           </ul>
         </div>
         <div>

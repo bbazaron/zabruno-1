@@ -250,8 +250,15 @@ async function registerUser() {
               class="mt-0.5 h-4 w-4 shrink-0 rounded border border-neutral-300 text-slate-900 focus:ring-2 focus:ring-slate-500"
             />
             <label for="sign-up-pd-consent" class="text-sm text-slate-700 leading-snug cursor-pointer">
-              Даю согласие на обработку персональных данных
-              <span class="text-red-600" aria-hidden="true">*</span>
+              Я ознакомлен(а) с
+              <RouterLink
+                to="/personal-data-policy"
+                class="text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                @click.stop
+              >
+                Политикой обработки персональных данных
+              </RouterLink>
+              и даю согласие на обработку персональных данных
             </label>
           </div>
 

@@ -37,6 +37,7 @@ const form = ref({
 
 const formError = ref('')
 const submitError = ref('')
+const termsAccepted = ref(false)
 
 watch(
   form,
@@ -46,6 +47,11 @@ watch(
   },
   { deep: true },
 )
+
+watch(termsAccepted, () => {
+  formError.value = ''
+  submitError.value = ''
+})
 
 function normalizeRuPhoneInput(raw: string): string {
   const digits = raw.replace(/\D/g, '')
@@ -208,6 +214,11 @@ function validateForm(): boolean {
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
     formError.value = 'Укажите корректный email'
+    return false
+  }
+  if (!termsAccepted.value) {
+    formError.value =
+      'Необходимо принять условия оферты, ознакомиться с политикой конфиденциальности и дать согласие на обработку персональных данных'
     return false
   }
   return true
@@ -402,7 +413,38 @@ onMounted(() => {
             </svg>
             <p class="min-w-0 leading-relaxed">{{ submitError }}</p>
           </div>
-          <Button class="w-full mt-4" :disabled="submitting || items.length === 0" @click="submitOrder">
+          <div class="mt-4 flex items-start gap-2.5">
+            <input
+              id="cart-checkout-terms"
+              v-model="termsAccepted"
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 shrink-0 rounded border border-neutral-300 text-slate-900 focus:ring-2 focus:ring-slate-500"
+            />
+            <label for="cart-checkout-terms" class="text-xs text-slate-700 leading-snug cursor-pointer">
+              Я принимаю условия
+              <RouterLink
+                to="/public-offer"
+                class="text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                @click.stop
+              >
+                Публичной оферты
+              </RouterLink>,
+              ознакомлен(а) с
+              <RouterLink
+                to="/personal-data-policy"
+                class="text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                @click.stop
+              >
+                Политикой конфиденциальности
+              </RouterLink>
+              и даю согласие на обработку персональных данных
+            </label>
+          </div>
+          <Button
+            class="w-full mt-4"
+            :disabled="submitting || items.length === 0 || !termsAccepted"
+            @click="submitOrder"
+          >
             {{ submitting ? 'Оформление...' : 'Оплатить и оформить' }}
           </Button>
         </aside>
