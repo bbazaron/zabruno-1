@@ -244,15 +244,17 @@ function compareSizeLabels(a: string, b: string): number {
 }
 
 /**
- * Агрегация позиций order_items по (product_name + размер):
+ * Агрегация позиций order_items по (школа + product_name + размер):
  * размер = size_override строки, иначе size_from_table заказа.
  */
 function aggregateProductionForOrders(list: AdminOrder[]) {
-  const map = new Map<string, { product_name: string; size: string; quantity: number }>()
+  const map = new Map<string, { school: string; product_name: string; size: string; quantity: number }>()
 
   for (const order of list) {
     const st = String(order.status || '').toLowerCase()
     if (PRODUCTION_EXCLUDED_STATUSES.has(st)) continue
+
+    const school = String(order.school || '').trim() || '—'
 
     for (const item of order.items ?? []) {
       const name = String(item.product_name || '').trim()
@@ -260,17 +262,19 @@ function aggregateProductionForOrders(list: AdminOrder[]) {
       const qty = Math.max(0, Math.floor(Number(item.quantity)) || 0)
       if (qty <= 0) continue
       const size = effectiveLineSize(item, order)
-      const key = `${name}\u0000${size}`
+      const key = `${school}\u0000${name}\u0000${size}`
       const cur = map.get(key)
       if (cur) cur.quantity += qty
-      else map.set(key, { product_name: name, size, quantity: qty })
+      else map.set(key, { school, product_name: name, size, quantity: qty })
     }
   }
 
   const rows = [...map.values()]
   rows.sort((x, y) => {
-    const c = x.product_name.localeCompare(y.product_name, 'ru')
-    if (c !== 0) return c
+    const bySchool = x.school.localeCompare(y.school, 'ru')
+    if (bySchool !== 0) return bySchool
+    const byProduct = x.product_name.localeCompare(y.product_name, 'ru')
+    if (byProduct !== 0) return byProduct
     return compareSizeLabels(x.size, y.size)
   })
 
@@ -302,6 +306,7 @@ function exportProductionToXlsx(list: AdminOrder[]) {
   }
 
   const rows = agg.map((r) => ({
+    Школа: r.school,
     'Товар / модель': r.product_name,
     Размер: r.size,
     'Кол-во (шт.)': r.quantity,
@@ -309,6 +314,7 @@ function exportProductionToXlsx(list: AdminOrder[]) {
   }))
 
   const ws = XLSX.utils.json_to_sheet(rows)
+  applyOrdersExportSheetLayout(ws)
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Производство')
   XLSX.writeFile(wb, exportProductionXlsxFileName())
