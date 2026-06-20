@@ -44,7 +44,7 @@ import Typography from '../components/ui/Typography.vue'
                 <li>Федеральным законом №149-ФЗ «Об информации, информационных технологиях и о защите информации»;</li>
                 <li>иными нормативными правовыми актами Российской Федерации.</li>
               </ul>
-              <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">1.3.</span> Настоящая Политика применяется ко всей информации, которую Оператор может получить о пользователях сайта AGAFORMA.RU.</Typography>
+              <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">1.3.</span> Настоящая Политика применяется ко всей информации, которую Оператор может получить о пользователях сайта FORMA75.RU.</Typography>
             </div>
 
             <div class="space-y-2">
@@ -114,7 +114,7 @@ import Typography from '../components/ui/Typography.vue'
 
             <div class="space-y-3">
               <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">7. Цели обработки персональных данных</span></Typography>
-              <Typography as="p" variant="body" class="leading-relaxed">Сайт AGAFORMA.RU предназначен для дистанционного заказа школьной формы, включая вязаные жилеты, кардиганы, юбки и иные изделия, изготавливаемые по индивидуальным параметрам обучающихся образовательных организаций.</Typography>
+              <Typography as="p" variant="body" class="leading-relaxed">Сайт FORMA75.RU предназначен для дистанционного заказа школьной формы, включая вязаные жилеты, кардиганы, юбки и иные изделия, изготавливаемые по индивидуальным параметрам обучающихся образовательных организаций.</Typography>
               <Typography as="p" variant="body" class="leading-relaxed">Обработка персональных данных осуществляется в том числе для:</Typography>
               <ul class="list-disc pl-6 space-y-1 text-sm sm:text-base leading-relaxed">
                 <li>изготовления изделий по индивидуальным размерам;</li>
@@ -215,7 +215,7 @@ import Typography from '../components/ui/Typography.vue'
 
             <div class="space-y-3">
               <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">17. Использование файлов Cookie и сервисов аналитики</span></Typography>
-              <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">17.1.</span> Сайт AGAFORMA.RU может использовать файлы Cookie и сервис веб-аналитики «Яндекс.Метрика» для обеспечения корректной работы сайта, повышения удобства его использования, анализа посещаемости и улучшения качества предоставляемых сервисов.</Typography>
+              <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">17.1.</span> Сайт FORMA75.RU может использовать файлы Cookie и сервис веб-аналитики «Яндекс.Метрика» для обеспечения корректной работы сайта, повышения удобства его использования, анализа посещаемости и улучшения качества предоставляемых сервисов.</Typography>
               <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">17.2.</span> Cookie представляют собой небольшие текстовые файлы, сохраняемые на устройстве пользователя при посещении сайта.</Typography>
               <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">17.3.</span> На сайте могут использоваться следующие категории файлов Cookie:</Typography>
               <ul class="list-disc pl-6 space-y-1 text-sm sm:text-base leading-relaxed">
@@ -250,7 +250,7 @@ import Typography from '../components/ui/Typography.vue'
               <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">17.9.</span> Продолжая использование сайта после отображения уведомления об использовании Cookie, пользователь подтверждает согласие на использование файлов Cookie в соответствии с настоящей Политикой.</Typography>
             </div>
 
-            <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">18. Заключительные положения</span><br>Оператор вправе вносить изменения в настоящую Политику. Актуальная редакция Политики размещается на сайте AGAFORMA.RU.</Typography>
+            <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">18. Заключительные положения</span><br>Оператор вправе вносить изменения в настоящую Политику. Актуальная редакция Политики размещается на сайте FORMA75.RU.</Typography>
 
             <div class="space-y-2">
               <Typography as="p" variant="body" class="leading-relaxed"><span class="font-semibold text-slate-900">19. Контактная информация</span></Typography>
