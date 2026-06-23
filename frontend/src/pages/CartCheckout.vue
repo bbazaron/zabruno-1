@@ -7,6 +7,7 @@ import Footer from '../components/sections/Footer.vue'
 import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
 import { usePickupAddress } from '../composables/usePickupAddress'
+import { resolveCartItemGenderLabel } from '../utils/productGender'
 
 interface CartItem {
   id: number
@@ -14,10 +15,12 @@ interface CartItem {
   selected_size?: string | null
   selected_color?: string | null
   selected_class?: string | null
+  selected_gender?: string | null
   product: {
     id: number
     name: string
     price: number | string
+    gender?: string | null
   } | null
 }
 
@@ -380,6 +383,12 @@ onMounted(() => {
               <span class="text-slate-700">
                 {{ item.product?.name }} x{{ item.quantity }}
                 <span v-if="item.selected_size" class="text-slate-500">({{ item.selected_size }})</span>
+                <span
+                  v-if="resolveCartItemGenderLabel(item.selected_gender, item.product?.gender)"
+                  class="text-slate-500"
+                >
+                  · {{ resolveCartItemGenderLabel(item.selected_gender, item.product?.gender) }}
+                </span>
                 <span v-if="item.selected_color" class="text-slate-500"> · {{ item.selected_color }}</span>
                 <span v-if="item.selected_class" class="text-slate-500"> · {{ item.selected_class }}</span>
               </span>

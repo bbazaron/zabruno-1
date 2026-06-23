@@ -20,6 +20,13 @@ import {
   isProductSizeAllowed,
   parseProductSizes,
 } from '../utils/productSizes'
+import {
+  normalizeSelectedGender,
+  productGenderRequiresChoice,
+  selectedGenderFromProduct,
+  selectedGenderLabel,
+  type SelectedItemGender,
+} from '../utils/productGender'
 
 const route = useRoute()
 const router = useRouter()
@@ -35,6 +42,7 @@ const schoolColorChoice = ref('')
 const customSchoolColor = ref('')
 const selectedClassNumber = ref('')
 const selectedClassLetter = ref('')
+const selectedItemGender = ref<SelectedItemGender>('boy')
 const cartLoading = ref(false)
 const availableSizes = ref<string[]>([])
 const availableClassNumbers = Array.from({ length: 11 }, (_, i) => String(i + 1))
@@ -47,6 +55,30 @@ const selectClass =
   'w-full max-w-md px-3 py-2 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900'
 
 const schoolColorOptions = computed(() => parseSchoolColorOptions(product.value?.color))
+
+const productRequiresGenderChoice = computed(() =>
+  productGenderRequiresChoice(product.value?.gender),
+)
+
+const fixedProductGender = computed(() => selectedGenderFromProduct(product.value?.gender))
+
+const displayedProductGender = computed(() => {
+  if (fixedProductGender.value) {
+    return selectedGenderLabel(fixedProductGender.value)
+  }
+  return selectedGenderLabel(selectedItemGender.value)
+})
+
+function syncSelectedGenderFromProduct() {
+  const fixed = selectedGenderFromProduct(product.value?.gender)
+  if (fixed) {
+    selectedItemGender.value = fixed
+    return
+  }
+  if (!normalizeSelectedGender(selectedItemGender.value)) {
+    selectedItemGender.value = 'boy'
+  }
+}
 
 const effectiveSchoolColor = computed((): string => {
   if (schoolColorChoice.value === SCHOOL_COLOR_OTHER_VALUE) {
@@ -95,6 +127,7 @@ async function fetchProduct() {
     }
     schoolColorChoice.value = schoolColorOptions.value[0] ?? ''
     customSchoolColor.value = ''
+    syncSelectedGenderFromProduct()
     selectedMedia.value = resolveBackendMediaUrl(product.value.image) // первое изображение по умолчанию
     await loadCartState()
   } catch (err) {
@@ -154,12 +187,22 @@ function getStoredToken(): string | null {
 
 function cartQuantityForSelectedSize(): number {
   return cartByVariant.value[
-    cartVariantKey(selectedSize.value, effectiveSchoolColor.value, selectedClassLabel())
+    cartVariantKey(
+      selectedSize.value,
+      effectiveSchoolColor.value,
+      selectedClassLabel(),
+      selectedItemGender.value,
+    )
   ] ?? 0
 }
 
-function cartVariantKey(size: string, color: string, classLabel: string): string {
-  return `${size}|${color.trim().toLowerCase()}|${classLabel.trim().toUpperCase()}`
+function cartVariantKey(
+  size: string,
+  color: string,
+  classLabel: string,
+  gender: SelectedItemGender,
+): string {
+  return `${size}|${color.trim().toLowerCase()}|${classLabel.trim().toUpperCase()}|${gender}`
 }
 
 function selectedClassLabel(): string {
@@ -196,13 +239,17 @@ async function loadCartState() {
       const size = String(row?.selected_size ?? '').trim()
       const color = String(row?.selected_color ?? '').trim()
       const classLabel = String(row?.selected_class ?? '').trim().toUpperCase()
+      const gender = normalizeSelectedGender(row?.selected_gender) ?? fixedProductGender.value ?? 'boy'
       const quantity = Number(row?.quantity ?? 0)
       if (!isProductSizeAllowed(size, availableSizes.value)) continue
 
-      nextState[cartVariantKey(size, color, classLabel)] = quantity > 0 ? quantity : 1
+      nextState[cartVariantKey(size, color, classLabel, gender)] = quantity > 0 ? quantity : 1
 
       if (quantity > 0 && color) {
         syncSchoolColorFromCartValue(color)
+      }
+      if (quantity > 0 && productRequiresGenderChoice.value) {
+        selectedItemGender.value = gender
       }
     }
 
@@ -240,6 +287,12 @@ async function addToCartAction() {
   }
 
   const colorToSend = effectiveSchoolColor.value || schoolColorOptions.value[0] || null
+  const genderToSend = fixedProductGender.value ?? selectedItemGender.value
+
+  if (productRequiresGenderChoice.value && !genderToSend) {
+    showToast('Выберите пол', 'error')
+    return
+  }
 
   cartLoading.value = true
   try {
@@ -251,6 +304,7 @@ async function addToCartAction() {
         selected_size: sizeToSend,
         selected_color: colorToSend,
         selected_class: selectedClassLabel() || null,
+        selected_gender: genderToSend,
       },
       {
         headers: {
@@ -307,6 +361,38 @@ async function addToCartAction() {
           <p v-if="product.season" class="text-sm text-slate-600">
             Сезон: <span class="font-medium text-slate-900">{{ product.season }}</span>
           </p>
+          <div class="w-full max-w-md space-y-2">
+            <p class="text-sm font-medium text-slate-700">Пол</p>
+            <p v-if="fixedProductGender" class="text-sm text-slate-900">
+              {{ displayedProductGender }}
+            </p>
+            <div v-else class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="px-3 py-1.5 text-sm rounded-md border transition-colors"
+                :class="
+                  selectedItemGender === 'boy'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-neutral-100'
+                "
+                @click="selectedItemGender = 'boy'"
+              >
+                Мальчик
+              </button>
+              <button
+                type="button"
+                class="px-3 py-1.5 text-sm rounded-md border transition-colors"
+                :class="
+                  selectedItemGender === 'girl'
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-neutral-100'
+                "
+                @click="selectedItemGender = 'girl'"
+              >
+                Девочка
+              </button>
+            </div>
+          </div>
           <div v-if="schoolColorOptions.length > 0" class="w-full max-w-md space-y-2">
             <label for="product-school-color" class="block text-sm font-medium text-slate-700">
               Школа / цвет

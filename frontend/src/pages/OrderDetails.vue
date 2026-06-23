@@ -10,6 +10,7 @@ import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
 import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
+import { itemGenderLabel } from '../utils/productGender'
 import { Phone, MapPin, Package, Info } from 'lucide-vue-next'
 
 interface OrderItem {
@@ -19,6 +20,7 @@ interface OrderItem {
   size_override?: string | null
   selected_color?: string | null
   selected_class?: string | null
+  selected_gender?: string | null
   line_comment?: string | null
   unit_price?: string | number | null
   line_total?: string | number | null
@@ -61,9 +63,9 @@ const router = useRouter()
 const { showToast } = useToast()
 const { loadProducts, resolveProductId, resolveProductImage, products } = useProductLinkResolver()
 
-function productHref(productName: string, orderGender?: string | null): string | null {
+function productHref(productName: string, orderGender?: string | null, itemGender?: string | null): string | null {
   void products.value.length
-  const id = resolveProductId(productName, orderGender)
+  const id = resolveProductId(productName, itemGender ?? orderGender)
   return id != null ? `/product/${id}` : null
 }
 
@@ -72,7 +74,7 @@ const itemImageByLineId = computed(() => {
   if (!o?.items?.length) return {} as Record<number, string | null>
   const out: Record<number, string | null> = {}
   for (const item of o.items) {
-    out[item.id] = resolveProductImage(item.product_name, o.child_gender)
+    out[item.id] = resolveProductImage(item.product_name, item.selected_gender ?? o.child_gender)
   }
   return out
 })
@@ -361,8 +363,8 @@ onMounted(() => {
                 class="shrink-0 w-20 h-20 rounded-lg bg-neutral-100 border border-neutral-200 overflow-hidden flex items-center justify-center text-slate-400"
               >
                 <RouterLink
-                  v-if="productHref(item.product_name, order.child_gender)"
-                  :to="productHref(item.product_name, order.child_gender)!"
+                  v-if="productHref(item.product_name, order.child_gender, item.selected_gender)"
+                  :to="productHref(item.product_name, order.child_gender, item.selected_gender)!"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="flex h-full w-full items-center justify-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 rounded-lg"
@@ -397,8 +399,8 @@ onMounted(() => {
               </div>
               <div class="flex-1 min-w-0">
                 <RouterLink
-                  v-if="productHref(item.product_name, order.child_gender)"
-                  :to="productHref(item.product_name, order.child_gender)!"
+                  v-if="productHref(item.product_name, order.child_gender, item.selected_gender)"
+                  :to="productHref(item.product_name, order.child_gender, item.selected_gender)!"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="font-medium text-slate-900 text-sm md:text-base leading-snug hover:text-slate-700 underline-offset-2 hover:underline inline-block"
@@ -413,6 +415,12 @@ onMounted(() => {
                 </p>
                 <p v-if="item.size_override" class="text-xs text-slate-600 mt-1">
                   Размер: {{ item.size_override }}
+                </p>
+                <p
+                  v-if="itemGenderLabel(item.selected_gender, order.child_gender)"
+                  class="text-xs text-slate-600 mt-1"
+                >
+                  Пол: {{ itemGenderLabel(item.selected_gender, order.child_gender) }}
                 </p>
                 <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
                   Школа / цвет: {{ item.selected_color }}

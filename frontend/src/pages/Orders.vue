@@ -9,6 +9,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useToast } from '../composables/useToast'
 import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
+import { itemGenderLabel } from '../utils/productGender'
 import {
   Phone,
   MapPin,
@@ -36,6 +37,10 @@ interface BackendOrder {
     id: number
     product_name: string
     quantity: number
+    size_override?: string | null
+    selected_color?: string | null
+    selected_class?: string | null
+    selected_gender?: string | null
     unit_price?: string | number | null
     line_total?: string | number | null
   }>
@@ -54,17 +59,21 @@ function isUserTabActive(path: '/orders' | '/cart'): boolean {
   return route.path === path
 }
 
-function productHref(productName: string, orderGender?: string | null): string | null {
+function productHref(
+  productName: string,
+  orderGender?: string | null,
+  itemGender?: string | null,
+): string | null {
   void products.value.length
-  const id = resolveProductId(productName, orderGender)
+  const id = resolveProductId(productName, itemGender ?? orderGender)
   return id != null ? `/product/${id}` : null
 }
 
 function itemThumbnail(
-  item: { product_name: string },
+  item: { product_name: string; selected_gender?: string | null },
   orderGender: string | undefined,
 ): string | null {
-  return resolveProductImage(item.product_name, orderGender)
+  return resolveProductImage(item.product_name, item.selected_gender ?? orderGender)
 }
 
 const userName = ref<string>('')
@@ -522,8 +531,8 @@ onMounted(() => {
                   class="shrink-0 w-20 h-20 rounded-lg bg-neutral-100 border border-neutral-200 overflow-hidden flex items-center justify-center text-slate-400"
                 >
                   <RouterLink
-                    v-if="productHref(item.product_name, order.child_gender)"
-                    :to="productHref(item.product_name, order.child_gender)!"
+                    v-if="productHref(item.product_name, order.child_gender, item.selected_gender)"
+                    :to="productHref(item.product_name, order.child_gender, item.selected_gender)!"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="flex h-full w-full items-center justify-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 rounded-lg"
@@ -558,8 +567,8 @@ onMounted(() => {
                 </div>
                 <div class="flex-1 min-w-0">
                   <RouterLink
-                    v-if="productHref(item.product_name, order.child_gender)"
-                    :to="productHref(item.product_name, order.child_gender)!"
+                    v-if="productHref(item.product_name, order.child_gender, item.selected_gender)"
+                    :to="productHref(item.product_name, order.child_gender, item.selected_gender)!"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="font-medium text-slate-900 text-sm md:text-base leading-snug hover:text-slate-700 underline-offset-2 hover:underline inline-block"
@@ -571,6 +580,15 @@ onMounted(() => {
                     class="font-medium text-slate-900 text-sm md:text-base leading-snug"
                   >
                     {{ item.product_name }}
+                  </p>
+                  <p
+                    v-if="itemGenderLabel(item.selected_gender, order.child_gender)"
+                    class="text-xs text-slate-600 mt-1"
+                  >
+                    Пол: {{ itemGenderLabel(item.selected_gender, order.child_gender) }}
+                  </p>
+                  <p v-if="item.size_override" class="text-xs text-slate-600 mt-1">
+                    Размер: {{ item.size_override }}
                   </p>
                 </div>
                 <div class="text-left sm:text-right shrink-0 sm:pl-4">

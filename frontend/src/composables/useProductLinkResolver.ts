@@ -45,6 +45,8 @@ export function useProductLinkResolver() {
     if (genderKey) {
       const hit = candidates.find((p) => p.gender === genderKey)
       if (hit) return hit.id
+      const allHit = candidates.find((p) => p.gender === 'all')
+      if (allHit) return allHit.id
     }
     return candidates[0].id
   }

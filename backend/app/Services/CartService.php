@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Product;
 use App\Models\UserProduct;
+use App\Support\ProductGender;
 use App\Support\ProductSchoolColors;
 use App\Support\ProductSizes;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -29,6 +30,7 @@ class CartService
         ?string $selectedSize = null,
         ?string $selectedColor = null,
         ?string $selectedClass = null,
+        ?string $selectedGender = null,
     ): UserProduct
     {
         $product = Product::query()->findOrFail($productId);
@@ -36,6 +38,7 @@ class CartService
         $normalizedSize = $this->normalizeSize($selectedSize, $product);
         $normalizedColor = $this->normalizeColor($selectedColor, $product);
         $normalizedClass = $this->normalizeClass($selectedClass);
+        $normalizedGender = ProductGender::normalizeSelected($selectedGender, $product);
 
         $item = UserProduct::query()->firstOrNew([
             'user_id' => $userId,
@@ -43,12 +46,64 @@ class CartService
             'selected_size' => $normalizedSize,
             'selected_color' => $normalizedColor,
             'selected_class' => $normalizedClass,
+            'selected_gender' => $normalizedGender,
         ]);
 
         $item->quantity = $item->exists
             ? max(1, (int) $item->quantity + $quantity)
             : max(1, $quantity);
 
+        $item->save();
+
+        return $item->fresh('product');
+    }
+
+    public function updateItem(
+        int $userId,
+        int $itemId,
+        ?int $quantity = null,
+        ?string $selectedGender = null,
+    ): ?UserProduct {
+        $item = UserProduct::query()
+            ->with('product')
+            ->where('user_id', $userId)
+            ->where('id', $itemId)
+            ->first();
+
+        if ($item === null || $item->product === null) {
+            return null;
+        }
+
+        $product = $item->product;
+        $nextQuantity = $quantity !== null ? max(1, $quantity) : (int) $item->quantity;
+        $nextGender = ProductGender::normalizeSelected(
+            $selectedGender ?? $item->selected_gender,
+            $product,
+        );
+
+        if ($nextGender !== $item->selected_gender) {
+            $duplicate = UserProduct::query()
+                ->where('user_id', $userId)
+                ->where('product_id', $item->product_id)
+                ->where('selected_size', $item->selected_size)
+                ->where('selected_color', $item->selected_color)
+                ->where('selected_class', $item->selected_class)
+                ->where('selected_gender', $nextGender)
+                ->where('id', '!=', $item->id)
+                ->first();
+
+            if ($duplicate !== null) {
+                $duplicate->quantity = (int) $duplicate->quantity + $nextQuantity;
+                $duplicate->save();
+                $item->delete();
+
+                return $duplicate->fresh('product');
+            }
+
+            $item->selected_gender = $nextGender;
+        }
+
+        $item->quantity = $nextQuantity;
         $item->save();
 
         return $item->fresh('product');
@@ -112,20 +167,7 @@ class CartService
 
     public function updateQuantity(int $userId, int $itemId, int $quantity): ?UserProduct
     {
-        $item = UserProduct::query()
-            ->where('user_id', $userId)
-            ->where('id', $itemId)
-            ->first();
-
-        if ($item === null) {
-            return null;
-        }
-
-        $item->update([
-            'quantity' => max(1, $quantity),
-        ]);
-
-        return $item->fresh('product');
+        return $this->updateItem($userId, $itemId, $quantity);
     }
 
     public function removeItem(int $userId, int $itemId): bool

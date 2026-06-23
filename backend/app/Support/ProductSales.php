@@ -45,11 +45,11 @@ class ProductSales
                                     $gender->whereNull('orders.child_gender')
                                         ->orWhere(function (QueryBuilder $boys): void {
                                             $boys->where('orders.child_gender', 'boy')
-                                                ->where('products.gender', 'boys');
+                                                ->whereIn('products.gender', ['boys', 'all']);
                                         })
                                         ->orWhere(function (QueryBuilder $girls): void {
                                             $girls->where('orders.child_gender', 'girl')
-                                                ->where('products.gender', 'girls');
+                                                ->whereIn('products.gender', ['girls', 'all']);
                                         });
                                 });
                         });

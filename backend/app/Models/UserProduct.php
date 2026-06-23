@@ -15,6 +15,7 @@ class UserProduct extends Model
         'selected_size',
         'selected_color',
         'selected_class',
+        'selected_gender',
         'quantity',
     ];
 

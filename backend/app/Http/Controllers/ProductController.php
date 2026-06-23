@@ -15,7 +15,10 @@ class ProductController extends Controller
 
         // Фильтр по полу
         if ($request->has('gender') && $request->gender !== 'all') {
-            $query->where('gender', $request->gender);
+            $query->where(function ($genderQuery) use ($request): void {
+                $genderQuery->where('gender', $request->gender)
+                    ->orWhere('gender', 'all');
+            });
         }
 
         // Фильтр по категории

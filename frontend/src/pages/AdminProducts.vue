@@ -90,7 +90,7 @@ const editingId = ref<number | null>(null)
 
 const formName = ref('')
 const formCategory = ref('')
-const formGender = ref<'boys' | 'girls'>('boys')
+const formGender = ref<'boys' | 'girls' | 'all'>('boys')
 const formSeason = ref('')
 const formPrice = ref('')
 const formOriginalPrice = ref('')
@@ -132,6 +132,13 @@ function formatFileSize(bytes: number): string {
   const kb = bytes / 1024
   if (kb < 1024) return `${kb.toFixed(1)} КБ`
   return `${(kb / 1024).toFixed(1)} МБ`
+}
+
+function formatProductGender(gender: string): string {
+  if (gender === 'boys') return 'Мальчики'
+  if (gender === 'girls') return 'Девочки'
+  if (gender === 'all') return 'Все'
+  return gender
 }
 
 function getAuthHeaders(): Record<string, string> {
@@ -210,7 +217,8 @@ function fillForm(p: AdminProduct) {
   editingId.value = p.id
   formName.value = p.name
   formCategory.value = p.category
-  formGender.value = p.gender === 'girls' ? 'girls' : 'boys'
+  formGender.value =
+    p.gender === 'boys' || p.gender === 'girls' || p.gender === 'all' ? p.gender : 'boys'
   formSeason.value = p.season ?? ''
   formPrice.value = String(p.price ?? '')
   formOriginalPrice.value =
@@ -1026,6 +1034,7 @@ onMounted(() => {
           <div>
             <label class="block text-xs font-medium text-slate-600 mb-1" for="ap-gender">Пол</label>
             <select id="ap-gender" v-model="formGender" :class="inputClass">
+              <option value="all">Все</option>
               <option value="boys">Мальчики</option>
               <option value="girls">Девочки</option>
             </select>
@@ -1309,7 +1318,7 @@ onMounted(() => {
                   </router-link>
                 </td>
                 <td class="py-2 px-3 align-middle">{{ getCategoryLabel(p.category) }}</td>
-                <td class="py-2 px-3 align-middle">{{ p.gender === 'boys' ? 'Мальчики' : 'Девочки' }}</td>
+                <td class="py-2 px-3 align-middle">{{ formatProductGender(p.gender) }}</td>
                 <td class="py-2 px-3 align-middle tabular-nums">{{ p.price }} ₽</td>
                 <td class="py-2 px-3 align-middle text-xs text-slate-600 max-w-[140px]">
                   {{ parseProductSizes(p.sizes).join(', ') || '—' }}

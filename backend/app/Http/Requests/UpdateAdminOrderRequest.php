@@ -43,6 +43,7 @@ class UpdateAdminOrderRequest extends FormRequest
             'items.*.size_override' => 'nullable|string|max:255',
             'items.*.selected_color' => 'nullable|string|max:50',
             'items.*.selected_class' => 'nullable|string|max:32',
+            'items.*.selected_gender' => 'nullable|string|in:boy,girl,boys,girls',
             'items.*.line_comment' => 'nullable|string|max:255',
 
             'kit_comment' => 'nullable|string|max:5000',

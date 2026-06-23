@@ -8,6 +8,13 @@ import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import {
+  normalizeSelectedGender,
+  productGenderRequiresChoice,
+  resolveCartItemGenderLabel,
+  selectedGenderFromProduct,
+  type SelectedItemGender,
+} from '../utils/productGender'
 
 interface CartItem {
   id: number
@@ -15,12 +22,14 @@ interface CartItem {
   selected_size?: string | null
   selected_color?: string | null
   selected_class?: string | null
+  selected_gender?: string | null
   product: {
     id: number
     name: string
     price: number | string
     image?: string | null
     in_stock?: boolean
+    gender?: string | null
   } | null
 }
 
@@ -40,6 +49,18 @@ function isUserTabActive(path: '/orders' | '/cart'): boolean {
 
 function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
+}
+
+function canEditItemGender(item: CartItem): boolean {
+  return productGenderRequiresChoice(item.product?.gender)
+}
+
+function itemGenderValue(item: CartItem): SelectedItemGender {
+  return (
+    normalizeSelectedGender(item.selected_gender) ??
+    selectedGenderFromProduct(item.product?.gender) ??
+    'boy'
+  )
 }
 
 const totalAmount = computed(() => {
@@ -119,7 +140,7 @@ async function updateQuantity(item: CartItem, nextQuantity: number) {
 
   updatingItemId.value = item.id
   try {
-    const response = await axios.patch(
+    await axios.patch(
       `/api/cart/${item.id}`,
       { quantity: nextQuantity },
       {
@@ -129,12 +150,39 @@ async function updateQuantity(item: CartItem, nextQuantity: number) {
         },
       },
     )
-    const updated = response.data?.item
-    if (updated) {
-      items.value = items.value.map((row) => (row.id === item.id ? updated : row))
-    }
+    await loadCart()
   } catch {
     showToast('Не удалось обновить количество', 'error')
+  } finally {
+    updatingItemId.value = null
+  }
+}
+
+async function updateItemGender(item: CartItem, nextGender: SelectedItemGender) {
+  if (!canEditItemGender(item) || itemGenderValue(item) === nextGender) return
+
+  const token = getStoredToken()
+  if (!token) {
+    router.push('/login')
+    return
+  }
+
+  updatingItemId.value = item.id
+  try {
+    await axios.patch(
+      `/api/cart/${item.id}`,
+      { selected_gender: nextGender },
+      {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+    await loadCart()
+  } catch (err: any) {
+    const message = String(err?.response?.data?.message ?? '').trim()
+    showToast(message || 'Не удалось изменить пол', 'error')
   } finally {
     updatingItemId.value = null
   }
@@ -280,6 +328,40 @@ onMounted(() => {
               <p v-else class="font-semibold text-slate-900">
                 {{ item.product?.name || 'Товар недоступен' }}
               </p>
+              <p
+                v-if="resolveCartItemGenderLabel(item.selected_gender, item.product?.gender)"
+                class="text-xs text-slate-500 mt-1"
+              >
+                Пол: {{ resolveCartItemGenderLabel(item.selected_gender, item.product?.gender) }}
+              </p>
+              <div v-if="canEditItemGender(item)" class="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="px-2.5 py-1 text-xs rounded-md border transition-colors"
+                  :class="
+                    itemGenderValue(item) === 'boy'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-neutral-100'
+                  "
+                  :disabled="updatingItemId === item.id"
+                  @click="updateItemGender(item, 'boy')"
+                >
+                  Мальчик
+                </button>
+                <button
+                  type="button"
+                  class="px-2.5 py-1 text-xs rounded-md border transition-colors"
+                  :class="
+                    itemGenderValue(item) === 'girl'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-300 hover:bg-neutral-100'
+                  "
+                  :disabled="updatingItemId === item.id"
+                  @click="updateItemGender(item, 'girl')"
+                >
+                  Девочка
+                </button>
+              </div>
               <p v-if="item.selected_size" class="text-xs text-slate-500 mt-1">
                 Размер: {{ item.selected_size }}
               </p>

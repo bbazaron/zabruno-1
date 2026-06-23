@@ -16,6 +16,7 @@ class OrderItem extends Model
         'size_override',
         'selected_color',
         'selected_class',
+        'selected_gender',
         'line_comment',
     ];
 

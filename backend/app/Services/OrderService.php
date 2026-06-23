@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\UserProduct;
 use App\Models\User;
 use App\Support\PickupAddress;
+use App\Support\ProductGender;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -63,6 +64,7 @@ class OrderService
                     'size_override' => $row['size_override'] ?? null,
                     'selected_color' => $row['selected_color'] ?? null,
                     'selected_class' => $row['selected_class'] ?? null,
+                    'selected_gender' => isset($row['selected_gender']) ? ProductGender::normalizeSelectedForItem($row['selected_gender']) : null,
                     'line_comment' => $row['line_comment'] ?? null,
                 ]);
             }
@@ -137,6 +139,7 @@ class OrderService
                 'size_override' => $cartItem->selected_size,
                 'selected_color' => $cartItem->selected_color,
                 'selected_class' => $cartItem->selected_class,
+                'selected_gender' => $cartItem->selected_gender,
             ];
         }
 
@@ -196,6 +199,7 @@ class OrderService
                     'size_override' => $line['size_override'],
                     'selected_color' => $line['selected_color'] ?? null,
                     'selected_class' => $line['selected_class'] ?? null,
+                    'selected_gender' => $line['selected_gender'] ?? null,
                     'line_comment' => null,
                 ]);
             }
@@ -359,10 +363,19 @@ class OrderService
                 $qty = 1;
             }
             $query = Product::query()->where('name', $name);
-            if ($productGender !== null && $productGender !== '') {
-                $query->where('gender', $productGender);
+            $rowGender = ProductGender::toProductGender($row['selected_gender'] ?? null) ?? $productGender;
+            if ($rowGender !== null && $rowGender !== '') {
+                $candidates = $query
+                    ->where(function ($genderQuery) use ($rowGender): void {
+                        $genderQuery->where('gender', $rowGender)
+                            ->orWhere('gender', 'all');
+                    })
+                    ->get();
+                $product = $candidates->first(fn (Product $p) => $p->gender === $rowGender)
+                    ?? $candidates->first(fn (Product $p) => $p->gender === 'all');
+            } else {
+                $product = $query->first();
             }
-            $product = $query->first();
             if ($product === null) {
                 $lines[] = [
                     'product_name' => $name,
@@ -619,8 +632,13 @@ class OrderService
                 $candidates = $productsByName->get($name);
                 if ($candidates instanceof Collection && $candidates->isNotEmpty()) {
                     $match = null;
-                    if ($productGender !== null) {
-                        $match = $candidates->first(fn (Product $p) => $p->gender === $productGender);
+                    $itemGender = ProductGender::toProductGender($item->selected_gender);
+                    if ($itemGender !== null) {
+                        $match = $candidates->first(fn (Product $p) => $p->gender === $itemGender)
+                            ?? $candidates->first(fn (Product $p) => $p->gender === 'all');
+                    } elseif ($productGender !== null) {
+                        $match = $candidates->first(fn (Product $p) => $p->gender === $productGender)
+                            ?? $candidates->first(fn (Product $p) => $p->gender === 'all');
                     }
                     if (! $match) {
                         $match = $candidates->first();
@@ -807,6 +825,7 @@ class OrderService
                     'size_override' => $row['size_override'] ?? null,
                     'selected_color' => $row['selected_color'] ?? null,
                     'selected_class' => $row['selected_class'] ?? null,
+                    'selected_gender' => isset($row['selected_gender']) ? ProductGender::normalizeSelectedForItem($row['selected_gender']) : null,
                     'line_comment' => $row['line_comment'] ?? null,
                 ]);
             }

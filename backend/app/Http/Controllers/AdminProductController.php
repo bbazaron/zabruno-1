@@ -37,7 +37,7 @@ class AdminProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'category' => ['required', 'string', Rule::exists('product_categories', 'id')],
-            'gender' => 'required|string|in:boys,girls',
+            'gender' => 'required|string|in:boys,girls,all',
             'season' => 'nullable|string|max:50',
             'price' => 'required|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',
@@ -91,7 +91,7 @@ class AdminProductController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'category' => ['sometimes', 'string', Rule::exists('product_categories', 'id')],
-            'gender' => 'sometimes|string|in:boys,girls',
+            'gender' => 'sometimes|string|in:boys,girls,all',
             'season' => 'nullable|string|max:50',
             'price' => 'sometimes|numeric|min:0',
             'original_price' => 'nullable|numeric|min:0',

@@ -9,6 +9,7 @@ import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
 import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
+import { itemGenderLabel } from '../utils/productGender'
 import { Phone, MapPin, Package, Info, Trash2, Plus } from 'lucide-vue-next'
 
 interface OrderItem {
@@ -18,6 +19,7 @@ interface OrderItem {
   size_override?: string | null
   selected_color?: string | null
   selected_class?: string | null
+  selected_gender?: string | null
   line_comment?: string | null
   unit_price?: string | number | null
   line_total?: string | number | null
@@ -72,6 +74,7 @@ interface ItemDraft {
   size_override: string
   selected_color: string
   selected_class: string
+  selected_gender: '' | 'boy' | 'girl'
   line_comment: string
 }
 
@@ -160,9 +163,13 @@ const statusOptions = computed(() => {
   return [{ value: s, label: statusBadge(s).label }, ...base]
 })
 
-function productHref(productName: string, orderGender?: string | null): string | null {
+function productHref(
+  productName: string,
+  orderGender?: string | null,
+  itemGender?: string | null,
+): string | null {
   void products.value.length
-  const id = resolveProductId(productName, orderGender)
+  const id = resolveProductId(productName, itemGender ?? orderGender)
   return id != null ? `/product/${id}` : null
 }
 
@@ -171,7 +178,7 @@ const itemImageByLineId = computed(() => {
   if (!o?.items?.length) return {} as Record<number, string | null>
   const out: Record<number, string | null> = {}
   for (const item of o.items) {
-    out[item.id] = resolveProductImage(item.product_name, o.child_gender)
+    out[item.id] = resolveProductImage(item.product_name, item.selected_gender ?? o.child_gender)
   }
   return out
 })
@@ -337,6 +344,8 @@ function orderToDraft(o: AdminOrder): OrderDraft {
             size_override: i.size_override ?? '',
             selected_color: i.selected_color ?? '',
             selected_class: i.selected_class ?? '',
+            selected_gender:
+              i.selected_gender === 'girl' ? 'girl' : i.selected_gender === 'boy' ? 'boy' : '',
             line_comment: i.line_comment ?? '',
           }))
         : [
@@ -346,6 +355,7 @@ function orderToDraft(o: AdminOrder): OrderDraft {
               size_override: '',
               selected_color: '',
               selected_class: '',
+              selected_gender: '',
               line_comment: '',
             },
           ],
@@ -360,6 +370,7 @@ function buildPayload(d: OrderDraft) {
       size_override: i.size_override.trim() || null,
       selected_color: i.selected_color.trim() || null,
       selected_class: i.selected_class.trim() || null,
+      selected_gender: i.selected_gender || null,
       line_comment: i.line_comment.trim() || null,
     }))
     .filter((i) => i.product_name.length > 0)
@@ -410,6 +421,7 @@ function addDraftItem() {
     size_override: '',
     selected_color: '',
     selected_class: '',
+    selected_gender: '',
     line_comment: '',
   })
 }
@@ -833,8 +845,8 @@ onMounted(() => {
                   class="shrink-0 w-20 h-20 rounded-lg bg-neutral-100 border border-neutral-200 overflow-hidden flex items-center justify-center text-slate-400"
                 >
                   <RouterLink
-                    v-if="productHref(item.product_name, order.child_gender)"
-                    :to="productHref(item.product_name, order.child_gender)!"
+                    v-if="productHref(item.product_name, order.child_gender, item.selected_gender)"
+                    :to="productHref(item.product_name, order.child_gender, item.selected_gender)!"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="flex h-full w-full items-center justify-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 rounded-lg"
@@ -859,8 +871,8 @@ onMounted(() => {
                 </div>
                 <div class="flex-1 min-w-0">
                   <RouterLink
-                    v-if="productHref(item.product_name, order.child_gender)"
-                    :to="productHref(item.product_name, order.child_gender)!"
+                    v-if="productHref(item.product_name, order.child_gender, item.selected_gender)"
+                    :to="productHref(item.product_name, order.child_gender, item.selected_gender)!"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="font-medium text-slate-900 text-sm md:text-base leading-snug hover:text-slate-700 underline-offset-2 hover:underline inline-block"
@@ -872,6 +884,12 @@ onMounted(() => {
                   </p>
                   <p v-if="item.size_override" class="text-xs text-slate-600 mt-1">
                     Размер: {{ item.size_override }}
+                  </p>
+                  <p
+                    v-if="itemGenderLabel(item.selected_gender, order.child_gender)"
+                    class="text-xs text-slate-600 mt-1"
+                  >
+                    Пол: {{ itemGenderLabel(item.selected_gender, order.child_gender) }}
                   </p>
                   <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
                     Школа / цвет: {{ item.selected_color }}
@@ -946,6 +964,14 @@ onMounted(() => {
                   <div>
                     <label class="block text-xs text-slate-500 mb-1">Школа / цвет</label>
                     <input v-model="row.selected_color" type="text" :class="inputClass" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Пол позиции</label>
+                    <select v-model="row.selected_gender" :class="inputClass">
+                      <option value="">Как у заказа</option>
+                      <option value="boy">Мальчик</option>
+                      <option value="girl">Девочка</option>
+                    </select>
                   </div>
                   <div>
                     <label class="block text-xs text-slate-500 mb-1">Класс</label>

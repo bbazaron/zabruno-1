@@ -235,7 +235,9 @@ const filteredProducts = computed(() => {
   let filtered = products.value
 
   if (selectedGender.value !== 'all') {
-    filtered = filtered.filter((p) => p.gender === selectedGender.value)
+    filtered = filtered.filter(
+      (p) => p.gender === selectedGender.value || p.gender === 'all',
+    )
   }
   if (selectedCategory.value !== 'all') {
     filtered = filtered.filter((p) => p.category === selectedCategory.value)
@@ -314,7 +316,7 @@ function handleCartButtonClick(product: CatalogProduct) {
     void router.push('/cart')
     return
   }
-  if (parseSchoolColorOptions(product.color).length > 0) {
+  if (parseSchoolColorOptions(product.color).length > 0 || product.gender === 'all') {
     void router.push(`/product/${product.id}`)
     return
   }

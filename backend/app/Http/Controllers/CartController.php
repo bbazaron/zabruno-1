@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\CartService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class CartController extends Controller
 {
@@ -39,6 +40,7 @@ class CartController extends Controller
             'selected_size' => ['nullable', 'string', 'max:16'],
             'selected_color' => ['nullable', 'string', 'max:255'],
             'selected_class' => ['nullable', 'string', 'max:32', 'regex:/^\d{1,2}\s*[А-ЯA-Z]$/u'],
+            'selected_gender' => ['nullable', 'string', 'in:boy,girl,boys,girls'],
         ]);
 
         try {
@@ -49,6 +51,7 @@ class CartController extends Controller
                 isset($validated['selected_size']) ? (string) $validated['selected_size'] : null,
                 isset($validated['selected_color']) ? (string) $validated['selected_color'] : null,
                 isset($validated['selected_class']) ? (string) $validated['selected_class'] : null,
+                isset($validated['selected_gender']) ? (string) $validated['selected_gender'] : null,
             );
         } catch (\RuntimeException $e) {
             return response()->json([
@@ -70,16 +73,35 @@ class CartController extends Controller
         }
 
         $validated = $request->validate([
-            'quantity' => ['required', 'integer', 'min:1'],
+            'quantity' => ['sometimes', 'integer', 'min:1'],
+            'selected_gender' => ['sometimes', 'string', 'in:boy,girl,boys,girls'],
         ]);
 
-        $item = $this->cartService->updateQuantity($user->id, $itemId, (int) $validated['quantity']);
+        if (! array_key_exists('quantity', $validated) && ! array_key_exists('selected_gender', $validated)) {
+            throw ValidationException::withMessages([
+                'quantity' => ['Укажите количество или пол'],
+            ]);
+        }
+
+        try {
+            $item = $this->cartService->updateItem(
+                $user->id,
+                $itemId,
+                array_key_exists('quantity', $validated) ? (int) $validated['quantity'] : null,
+                array_key_exists('selected_gender', $validated) ? (string) $validated['selected_gender'] : null,
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
         if ($item === null) {
             return response()->json(['message' => 'Item not found'], 404);
         }
 
         return response()->json([
-            'message' => 'Количество обновлено',
+            'message' => 'Корзина обновлена',
             'item' => $item,
         ]);
     }
