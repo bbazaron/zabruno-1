@@ -192,17 +192,6 @@ function getStoredToken(): string | null {
   return localStorage.getItem('auth_token') || localStorage.getItem('token')
 }
 
-function cartQuantityForSelectedSize(): number {
-  return cartByVariant.value[
-    cartVariantKey(
-      selectedSize.value,
-      effectiveSchoolColor.value,
-      selectedClassLabel(),
-      selectedItemGender.value,
-    )
-  ] ?? 0
-}
-
 function cartVariantKey(
   size: string,
   color: string,
