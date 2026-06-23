@@ -69,6 +69,12 @@ const displayedProductGender = computed(() => {
   return selectedGenderLabel(selectedItemGender.value)
 })
 
+const productInStock = computed(() => Boolean(product.value?.inStock))
+
+function cartQuantityTotal(): number {
+  return Object.values(cartByVariant.value).reduce((sum, qty) => sum + qty, 0)
+}
+
 function syncSelectedGenderFromProduct() {
   const fixed = selectedGenderFromProduct(product.value?.gender)
   if (fixed) {
@@ -174,10 +180,11 @@ function goToMediaByStep(step: number) {
 }
 
 function addToCart() {
-  if (cartQuantityForSelectedSize() > 0) {
+  if (cartQuantityTotal() > 0) {
     void router.push('/cart')
     return
   }
+  if (!productInStock.value) return
   void addToCartAction()
 }
 
@@ -268,6 +275,10 @@ async function addToCartAction() {
 
   if (!product.value?.id) {
     showToast('Товар не найден', 'error')
+    return
+  }
+  if (!productInStock.value) {
+    showToast('Товар отсутствует в наличии', 'error')
     return
   }
   const sizeToSend =
@@ -481,17 +492,18 @@ async function addToCartAction() {
           </div>
           <Button
               @click="addToCart"
-              :variant="cartQuantityForSelectedSize() > 0 ? 'outline' : 'primary'"
-              :disabled="cartLoading"
+              :variant="cartQuantityTotal() > 0 ? 'outline' : 'primary'"
+              :disabled="(!productInStock && cartQuantityTotal() === 0) || cartLoading"
               class="w-full flex items-center justify-center gap-2 mt-4"
               :class="
-                cartQuantityForSelectedSize() > 0
+                cartQuantityTotal() > 0
                   ? '!bg-emerald-600 !text-white !border-emerald-600 hover:!bg-emerald-500'
                   : ''
               "
           >
             <ShoppingCart :size="16" />
-            <span v-if="cartQuantityForSelectedSize() > 0">Перейти в корзину</span>
+            <span v-if="!productInStock && cartQuantityTotal() === 0">Нет в наличии</span>
+            <span v-else-if="cartQuantityTotal() > 0">Перейти в корзину</span>
             <span v-else>В корзину</span>
           </Button>
         </div>
