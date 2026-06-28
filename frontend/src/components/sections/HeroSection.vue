@@ -103,10 +103,12 @@ const cards = [
               <!-- CTAs -->
               <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-4 sm:pt-2">
                 <Button variant="primary" size="lg" type="button" class="w-full sm:w-auto" @click="goToOrderCheckout">
-                  Оформить заказ →
+                  Оформить заказ <br>
+                  для пошива →
                 </Button>
                 <Button variant="secondary" size="lg" as="link" href="/catalog" class="w-full sm:w-auto">
-                  Смотреть коллекцию
+                  Оформить заказ <br>
+                  готовой продукции →
                 </Button>
               </div>
             </div>

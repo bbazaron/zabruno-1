@@ -857,7 +857,7 @@ const summaryLines = computed(() => {
 
         <div v-else class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full">
           <Typography as="h1" variant="h2" class="mb-2 text-slate-900">
-            Оформление заказа
+            Оформление заказа для пошива
           </Typography>
           <Typography as="p" variant="body" class="mb-8 text-slate-600">
             Заполните данные по шагам — это займёт несколько минут.
