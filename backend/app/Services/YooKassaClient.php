@@ -30,6 +30,7 @@ class YooKassaClient
 
     /**
      * @param  array<string, string>  $metadata
+     * @param  array<string, mixed>|null  $receipt
      * @return array{id: string, status: string, confirmation_url: string}
      */
     public function createRedirectPayment(
@@ -38,10 +39,29 @@ class YooKassaClient
         string $returnUrl,
         array $metadata = [],
         ?string $idempotenceKey = null,
+        ?array $receipt = null,
     ): array
     {
         if (! $this->isConfigured()) {
             throw new RuntimeException('ЮKassa не настроена: укажите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
+        }
+
+        $payload = [
+            'amount' => [
+                'value' => $amountValue,
+                'currency' => 'RUB',
+            ],
+            'confirmation' => [
+                'type' => 'redirect',
+                'return_url' => $returnUrl,
+            ],
+            'capture' => true,
+            'description' => $description,
+            'metadata' => $metadata,
+        ];
+
+        if ($receipt !== null) {
+            $payload['receipt'] = $receipt;
         }
 
         $response = Http::withBasicAuth($this->shopId, $this->secretKey)
@@ -50,23 +70,19 @@ class YooKassaClient
                 'Content-Type' => 'application/json',
             ])
             ->timeout(45)
-            ->post('https://api.yookassa.ru/v3/payments', [
-                'amount' => [
-                    'value' => $amountValue,
-                    'currency' => 'RUB',
-                ],
-                'confirmation' => [
-                    'type' => 'redirect',
-                    'return_url' => $returnUrl,
-                ],
-                'capture' => true,
-                'description' => $description,
-                'metadata' => $metadata,
-            ]);
+            ->post('https://api.yookassa.ru/v3/payments', $payload);
 
         if (! $response->successful()) {
+            Log::warning('YooKassa create payment failed', [
+                'status' => $response->status(),
+                'body' => $response->json() ?? $response->body(),
+            ]);
+            $descriptionFromApi = data_get($response->json(), 'description');
+            $suffix = is_string($descriptionFromApi) && $descriptionFromApi !== ''
+                ? ': '.$descriptionFromApi
+                : '';
             throw new RuntimeException(
-                'Не удалось создать платёж в ЮKassa: HTTP '.$response->status()
+                'Не удалось создать платёж в ЮKassa: HTTP '.$response->status().$suffix
             );
         }
 
@@ -112,6 +128,7 @@ class YooKassaClient
 
     /**
      * @param  array<string, string>  $metadata
+     * @param  array<string, mixed>|null  $receipt
      * @return array{id:string,status:string,payment_id:string,amount:string}
      */
     public function createRefund(
@@ -120,10 +137,25 @@ class YooKassaClient
         string $description,
         ?string $idempotenceKey = null,
         array $metadata = [],
+        ?array $receipt = null,
     ): array
     {
         if (! $this->isConfigured()) {
             throw new RuntimeException('ЮKassa не настроена: укажите YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
+        }
+
+        $payload = [
+            'payment_id' => $paymentId,
+            'amount' => [
+                'value' => $amountValue,
+                'currency' => 'RUB',
+            ],
+            'description' => $description,
+            'metadata' => $metadata,
+        ];
+
+        if ($receipt !== null) {
+            $payload['receipt'] = $receipt;
         }
 
         $response = Http::withBasicAuth($this->shopId, $this->secretKey)
@@ -132,18 +164,18 @@ class YooKassaClient
                 'Content-Type' => 'application/json',
             ])
             ->timeout(45)
-            ->post('https://api.yookassa.ru/v3/refunds', [
-                'payment_id' => $paymentId,
-                'amount' => [
-                    'value' => $amountValue,
-                    'currency' => 'RUB',
-                ],
-                'description' => $description,
-                'metadata' => $metadata,
-            ]);
+            ->post('https://api.yookassa.ru/v3/refunds', $payload);
 
         if (! $response->successful()) {
-            throw new RuntimeException('Не удалось создать возврат в ЮKassa: HTTP '.$response->status());
+            Log::warning('YooKassa create refund failed', [
+                'status' => $response->status(),
+                'body' => $response->json() ?? $response->body(),
+            ]);
+            $descriptionFromApi = data_get($response->json(), 'description');
+            $suffix = is_string($descriptionFromApi) && $descriptionFromApi !== ''
+                ? ': '.$descriptionFromApi
+                : '';
+            throw new RuntimeException('Не удалось создать возврат в ЮKassa: HTTP '.$response->status().$suffix);
         }
 
         $data = $response->json();

@@ -40,6 +40,17 @@ return [
         'secret_key' => env('YOOKASSA_SECRET_KEY'),
         /** Публичный URL фронтенда (куда вернётся покупатель после оплаты), например http://localhost:5173 */
         'frontend_url' => rtrim((string) env('FRONTEND_URL', ''), '/'),
+        /**
+         * Чек 54-ФЗ (обязателен, если в кабинете ЮKassa включена фискализация).
+         * vat_code: 1 без НДС, 2 НДС 0%, 3 НДС 10%, 4 НДС 20%, …
+         * @see https://yookassa.ru/developers/payment-acceptance/receipts/54fz/other-services/parameters-values
+         */
+        'receipt' => [
+            'vat_code' => (int) env('YOOKASSA_RECEIPT_VAT_CODE', 1),
+            'payment_mode' => env('YOOKASSA_RECEIPT_PAYMENT_MODE', 'full_payment'),
+            'payment_subject' => env('YOOKASSA_RECEIPT_PAYMENT_SUBJECT', 'commodity'),
+            'tax_system_code' => env('YOOKASSA_RECEIPT_TAX_SYSTEM_CODE'),
+        ],
     ],
 
 ];

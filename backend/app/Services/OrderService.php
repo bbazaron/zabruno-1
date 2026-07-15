@@ -9,6 +9,7 @@ use App\Models\UserProduct;
 use App\Models\User;
 use App\Support\PickupAddress;
 use App\Support\ProductGender;
+use App\Support\YooKassaReceipt;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
@@ -249,7 +250,7 @@ class OrderService
         $amountFormatted = number_format((float) $order->total_amount, 2, '.', '');
         $idempotenceKey = $this->canUseYookassaIdempotenceKeyColumn() && $order->yookassa_idempotence_key
             ? $order->yookassa_idempotence_key
-            : sprintf('order:%d:payment:v1', $order->id);
+            : sprintf('order:%d:payment:v2', $order->id);
 
         if ($this->canUseYookassaIdempotenceKeyColumn() && $order->yookassa_idempotence_key !== $idempotenceKey) {
             $order->update(['yookassa_idempotence_key' => $idempotenceKey]);
@@ -261,6 +262,7 @@ class OrderService
             $returnUrl,
             ['order_id' => (string) $order->id],
             $idempotenceKey,
+            YooKassaReceipt::fromOrder($order->loadMissing('items'), $amountFormatted),
         );
 
         $order->update([
@@ -746,6 +748,7 @@ class OrderService
                         'refund_id' => (string) $refund->id,
                         'reason_code' => $reasonCode,
                     ],
+                    YooKassaReceipt::fromOrder($order->loadMissing('items'), $amountFormatted),
                 );
             } catch (\Throwable $e) {
                 $refund->update([
