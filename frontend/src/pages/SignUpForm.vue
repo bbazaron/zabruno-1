@@ -55,15 +55,26 @@ onUnmounted(() => {
   if (resendTimer) clearInterval(resendTimer)
 })
 
+function screenMessage(message: string, fallback: string): string {
+  const text = message.trim()
+  if (!text) return fallback
+  if (/553|5\.1\.10|free_tier|no valid recipients|expected response code/i.test(text)) {
+    return 'Не удалось отправить код на эту почту. Попробуйте другой адрес.'
+  }
+  return text
+}
+
 function formatRegisterError(err: unknown): string {
   const e = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }
   const data = e.response?.data
   if (!data) return 'Ошибка регистрации'
   if (data.errors) {
     const first = Object.values(data.errors).flat()[0]
-    if (first) return first
+    if (first) return screenMessage(first, 'Ошибка регистрации')
   }
-  if (typeof data.message === 'string' && data.message.length > 0) return data.message
+  if (typeof data.message === 'string' && data.message.length > 0) {
+    return screenMessage(data.message, 'Ошибка регистрации')
+  }
   return 'Ошибка регистрации'
 }
 

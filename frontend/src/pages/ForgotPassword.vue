@@ -49,15 +49,24 @@ function normalizeEmail(value: string): string {
   return value.trim()
 }
 
+function screenMessage(message: string, fallback: string): string {
+  const text = message.trim()
+  if (!text) return fallback
+  if (/553|5\.1\.10|free_tier|no valid recipients|expected response code/i.test(text)) {
+    return 'Не удалось отправить код на эту почту. Попробуйте другой адрес.'
+  }
+  return text
+}
+
 function formatApiError(err: unknown, fallback: string): string {
   const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } })
     .response?.data
   if (data?.errors) {
     const first = Object.values(data.errors).flat()[0]
-    if (first) return first
+    if (first) return screenMessage(first, fallback)
   }
   if (typeof data?.message === 'string' && data.message.length > 0) {
-    return data.message
+    return screenMessage(data.message, fallback)
   }
   return fallback
 }

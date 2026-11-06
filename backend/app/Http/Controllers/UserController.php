@@ -9,6 +9,7 @@ use App\Http\Requests\ResendRegistrationCodeRequest;
 use App\Http\Requests\SignUpRequest;
 use App\Services\RegistrationCodeService;
 use App\Services\UserService;
+use App\Support\MailDeliveryError;
 use Illuminate\Http\Request;
 
 class UserController extends Controller
@@ -28,7 +29,7 @@ class UserController extends Controller
             );
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => $e->getMessage(),
+                'message' => MailDeliveryError::forUser($e),
             ], 422);
         }
 
@@ -53,7 +54,7 @@ class UserController extends Controller
             );
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => $e->getMessage(),
+                'message' => MailDeliveryError::forUser($e),
             ], 422);
         }
 
@@ -73,7 +74,7 @@ class UserController extends Controller
             );
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => $e->getMessage(),
+                'message' => MailDeliveryError::forUser($e),
             ], 422);
         }
 
@@ -92,7 +93,7 @@ class UserController extends Controller
             $retryAfter = $this->registrationCodes->resend((string) $request->validated('email'));
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => $e->getMessage(),
+                'message' => MailDeliveryError::forUser($e),
             ], 422);
         }
 

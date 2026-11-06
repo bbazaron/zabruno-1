@@ -7,6 +7,7 @@ use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\VerifyPasswordResetCodeRequest;
 use App\Models\User;
 use App\Services\PasswordResetService;
+use App\Support\MailDeliveryError;
 
 class PasswordResetController extends Controller
 {
@@ -31,7 +32,7 @@ class PasswordResetController extends Controller
             $retryAfter = $this->passwordReset->requestCode($user->email);
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => $e->getMessage(),
+                'message' => MailDeliveryError::forUser($e),
             ], 422);
         }
 
