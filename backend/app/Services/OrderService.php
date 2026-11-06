@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CheckoutItem;
 use App\Models\Order;
 use App\Models\PaymentRefund;
 use App\Models\Product;
@@ -343,11 +344,11 @@ class OrderService
     }
 
     /**
-     * Сумма заказа и строки: для каждой позиции цена из products по точному совпадению названия × количество.
+     * Сумма заказа и строки: цена из карточки изделия (checkout_items), иначе из каталога products.
      * При заданном $productGender (boys/girls) выбирается товар с тем же полом
-     * Позиции без совпадения в каталоге дают line_total 0.
+     * Позиции без совпадения дают line_total 0.
      *
-     * @param  array<int, array{product_name?: string, quantity?: int}>  $items
+     * @param  array<int, array{checkout_item_id?: int|null, product_name?: string, quantity?: int}>  $items
      * @param  'boys'|'girls'|null  $productGender
      * @return array{total: string, lines: list<array{product_name: string, quantity: int, unit_price: string|null, line_total: string, image: string|null}>}
      */
@@ -357,15 +358,32 @@ class OrderService
         $lines = [];
         foreach ($items as $row) {
             $name = trim((string) ($row['product_name'] ?? ''));
-            if ($name === '') {
-                continue;
-            }
             $qty = (int) ($row['quantity'] ?? 1);
             if ($qty < 1) {
                 $qty = 1;
             }
-            $query = Product::query()->where('name', $name);
             $rowGender = ProductGender::toProductGender($row['selected_gender'] ?? null) ?? $productGender;
+            $checkoutItem = $this->resolveCheckoutItem($row, $name, $rowGender);
+            if ($checkoutItem !== null) {
+                $checkoutItem->loadMissing('product');
+                $unit = (float) $checkoutItem->resolvedPrice();
+                $lineTotal = $unit * $qty;
+                $sum += $lineTotal;
+                $resolvedName = $checkoutItem->resolvedName();
+                $lines[] = [
+                    'product_name' => $name !== '' ? $name : $resolvedName,
+                    'quantity' => $qty,
+                    'unit_price' => number_format($unit, 2, '.', ''),
+                    'line_total' => number_format($lineTotal, 2, '.', ''),
+                    'image' => $checkoutItem->resolvedImageUrl(),
+                ];
+
+                continue;
+            }
+            if ($name === '') {
+                continue;
+            }
+            $query = Product::query()->where('name', $name);
             if ($rowGender !== null && $rowGender !== '') {
                 $candidates = $query
                     ->where(function ($genderQuery) use ($rowGender): void {
@@ -414,6 +432,39 @@ class OrderService
     public function calculateTotalAmount(array $items, ?string $productGender = null): string
     {
         return $this->calculateOrderTotalsAndLines($items, $productGender)['total'];
+    }
+
+    /**
+     * @param  array{checkout_item_id?: int|string|null, product_name?: string}  $row
+     * @param  'boys'|'girls'|null  $productGender
+     */
+    private function resolveCheckoutItem(array $row, string $name, ?string $productGender): ?CheckoutItem
+    {
+        $id = isset($row['checkout_item_id']) ? (int) $row['checkout_item_id'] : 0;
+        if ($id > 0) {
+            $byId = CheckoutItem::query()->with('product')->find($id);
+            if ($byId !== null) {
+                return $byId;
+            }
+        }
+        if ($name === '') {
+            return null;
+        }
+
+        $query = CheckoutItem::query()->with('product')->where('name', $name);
+        if ($productGender !== null && $productGender !== '') {
+            $candidates = $query
+                ->where(function ($genderQuery) use ($productGender): void {
+                    $genderQuery->where('gender', $productGender)
+                        ->orWhere('gender', 'all');
+                })
+                ->get();
+
+            return $candidates->first(fn (CheckoutItem $item) => $item->gender === $productGender)
+                ?? $candidates->first(fn (CheckoutItem $item) => $item->gender === 'all');
+        }
+
+        return $query->first();
     }
 
     /**

@@ -139,6 +139,11 @@ const login = async () => {
               </svg>
             </button>
           </div>
+          <p class="mt-2 text-right text-sm">
+            <RouterLink to="/forgot-password" class="text-slate-900 font-medium hover:underline">
+              Забыли пароль?
+            </RouterLink>
+          </p>
         </div>
 
         <Button type="submit" variant="primary" class="w-full mt-2 gap-2" :disabled="loading">

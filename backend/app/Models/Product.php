@@ -6,6 +6,7 @@ use App\Support\ProductSchoolColors;
 use App\Support\ProductSizes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Product extends Model
 {
@@ -46,5 +47,10 @@ class Product extends Model
     public function media(): HasMany
     {
         return $this->hasMany(ProductMedia::class)->orderBy('sort_order');
+    }
+
+    public function checkoutItem(): HasOne
+    {
+        return $this->hasOne(CheckoutItem::class);
     }
 }

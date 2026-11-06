@@ -62,7 +62,9 @@ const showDateSortMenu = ref(false)
 const showStatusMenu = ref(false)
 const showOrderTypeMenu = ref(false)
 
-function isAdminTabActive(path: '/admin' | '/admin/orders' | '/admin/products'): boolean {
+function isAdminTabActive(
+  path: '/admin' | '/admin/orders' | '/admin/products' | '/admin/checkout-items',
+): boolean {
   if (path === '/admin/orders') return route.path.startsWith('/admin/orders')
   return route.path === path
 }
@@ -516,6 +518,13 @@ onBeforeUnmount(() => {
           @click="router.push('/admin/products')"
         >
           Управление товарами
+        </Button>
+        <Button
+          :variant="isAdminTabActive('/admin/checkout-items') ? 'primary' : 'secondary'"
+          size="sm"
+          @click="router.push('/admin/checkout-items')"
+        >
+          Изделия
         </Button>
         <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами

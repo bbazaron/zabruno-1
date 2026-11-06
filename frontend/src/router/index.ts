@@ -5,6 +5,7 @@ import GenderSelect from '../pages/GenderSelect.vue'
 import ProductPage from '../pages/ProductPage.vue'
 import SignUpForm from '../pages/SignUpForm.vue'
 import LoginForm from '../pages/LoginForm.vue'
+import ForgotPassword from '../pages/ForgotPassword.vue'
 import OrderCheckout from '../pages/OrderCheckout.vue'
 import Orders from '../pages/Orders.vue'
 import OrderDetails from '../pages/OrderDetails.vue'
@@ -13,6 +14,7 @@ import AdminPanel from '../pages/AdminPanel.vue'
 import AllOrders from '../pages/AllOrders.vue'
 import AdminOrderDetails from '../pages/AdminOrderDetails.vue'
 import AdminProducts from '../pages/AdminProducts.vue'
+import AdminCheckoutItems from '../pages/AdminCheckoutItems.vue'
 import Contacts from '../pages/Contacts.vue'
 import AboutUs from '../pages/AboutUs.vue'
 import AboutSize from '../pages/AboutSize.vue'
@@ -104,6 +106,12 @@ const routes = [
         meta: { title: 'Логин' },
     },
     {
+        path: '/forgot-password',
+        name: 'ForgotPassword',
+        component: ForgotPassword,
+        meta: { title: 'Восстановление пароля' },
+    },
+    {
         path: '/orderCheckout',
         name: 'OrderCheckout',
         component: OrderCheckout,
@@ -179,6 +187,16 @@ const routes = [
         component: AdminProducts,
         meta: {
             title: 'Управление товарами',
+            requiresAuth: true,
+            requiresAdmin: true,
+        },
+    },
+    {
+        path: '/admin/checkout-items',
+        name: 'AdminCheckoutItems',
+        component: AdminCheckoutItems,
+        meta: {
+            title: 'Изделия',
             requiresAuth: true,
             requiresAdmin: true,
         },

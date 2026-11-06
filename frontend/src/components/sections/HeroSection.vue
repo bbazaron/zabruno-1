@@ -72,13 +72,13 @@ const cards = [
                     class="text-[1.85rem] leading-[1.08] font-light tracking-tight text-slate-900 min-[400px]:text-[2.05rem] sm:text-4xl md:text-5xl lg:text-6xl"
                     style="font-family: 'Playfair Display', serif;"
                   >
-                    Школьная форма
+                    Школьная форма,
                   </div>
 
                   <div
                     class="text-xl font-light uppercase leading-tight tracking-tight text-slate-900 sm:text-2xl md:text-3xl lg:text-4xl"
                   >
-                    произведённая
+                    созданная
                   </div>
 
                   <!-- Надпись-картинка: только max-width ИЛИ max-height через w-auto h-auto, иначе ломается соотношение сторон -->
@@ -103,12 +103,12 @@ const cards = [
               <!-- CTAs -->
               <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-4 sm:pt-2">
                 <Button variant="primary" size="lg" type="button" class="w-full sm:w-auto" @click="goToOrderCheckout">
-                  Оформить заказ <br>
-                  для пошива →
+                  Нестандартный <br>
+                  размер →
                 </Button>
                 <Button variant="secondary" size="lg" as="link" href="/catalog" class="w-full sm:w-auto">
-                  Оформить заказ <br>
-                  готовой продукции →
+                  Заказать <br>
+                  школьную форму  →
                 </Button>
               </div>
             </div>

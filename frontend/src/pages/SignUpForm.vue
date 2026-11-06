@@ -288,6 +288,11 @@ async function registerUser() {
             @click="goToLogin"
           >Войти</span>
         </div>
+        <div class="mt-2 text-sm text-slate-600 text-center">
+          <RouterLink to="/forgot-password" class="text-slate-900 font-medium hover:underline">
+            Забыли пароль?
+          </RouterLink>
+        </div>
       </div>
     </main>
 

@@ -61,6 +61,7 @@ class StoreOrderRequest extends FormRequest
                     continue;
                 }
                 $normalized[] = [
+                    'checkout_item_id' => $row['checkout_item_id'] ?? $row['checkoutItemId'] ?? null,
                     'product_name' => $row['product_name'] ?? $row['productName'] ?? '',
                     'quantity' => $row['quantity'] ?? 1,
                     'size_override' => $row['size_override'] ?? $row['sizeOverride'] ?? null,
@@ -124,6 +125,7 @@ class StoreOrderRequest extends FormRequest
             'figure_comment' => 'nullable|string|max:5000',
 
             'items' => 'required|array|min:1',
+            'items.*.checkout_item_id' => 'nullable|integer|exists:checkout_items,id',
             'items.*.product_name' => 'required|string|max:255',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.size_override' => 'nullable|string|max:255',

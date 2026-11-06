@@ -79,8 +79,8 @@ async function fetchLatestPaymentStatus() {
 
 const stepLabels = [
   'Данные ребёнка',
-  'Размер',
-  'Комплект',
+  'Мерки',
+  'Изделие',
   'Данные родителя',
   'Получение',
   'Подтверждение',
@@ -90,7 +90,7 @@ const stepLabels = [
 const stepSubtitles = [
   'Кто учится и в каком классе — для изготовления формы.',
   'Размер по таблице и мерки для посадки изделия.',
-  'Выберите позиции комплекта и количество.',
+  'Отметьте, что необходимо сшить для ребенка',
   'Как с вами связаться по заказу.',
   'Кто заберёт готовый заказ.',
   'Проверьте данные и отправьте предзаказ.',
@@ -107,49 +107,16 @@ const school = ref('')
 const classNum = ref('')
 const classLetter = ref('')
 const schoolYear = ref('')
+const CLASS_LETTER_MAX_LENGTH = 30
+const CLASS_LETTER_TOO_LONG_ERROR = 'Литера: не больше 30 символов'
 
 const classNumSelectOptions = Array.from({ length: 11 }, (_, i) => String(i + 1))
-const classLetterSelectOptions = [
-  'А',
-  'Б',
-  'В',
-  'Г',
-  'Д',
-  'Е',
-  'Ё',
-  'Ж',
-  'З',
-  'И',
-  'Й',
-  'К',
-  'Л',
-  'М',
-  'Н',
-  'О',
-  'П',
-  'Р',
-  'С',
-  'Т',
-  'У',
-  'Ф',
-  'Х',
-  'Ц',
-  'Ч',
-  'Ш',
-  'Щ',
-  'Ъ',
-  'Ы',
-  'Ь',
-  'Э',
-  'Ю',
-  'Я',
-]
 const schoolYearSelectOptions = ['26/27', '27/28', '28/29', '29/30']
 
 // Шаг 2
 const sizeFromTable = ref('')
-const sizeFromTableSelectOptions = Array.from({ length: (50 - 28) / 2 + 1 }, (_, i) =>
-  String(28 + i * 2),
+const sizeFromTableSelectOptions = Array.from({ length: (50 - 30) / 2 + 1 }, (_, i) =>
+  String(30 + i * 2),
 )
 const heightCm = ref('')
 const chestCm = ref('')
@@ -158,135 +125,73 @@ const hipsCm = ref('')
 const figureComment = ref('')
 
 // Шаг 3
-type KitLine = {
-  productName: string
-  quantity: string
-  sizeOverride: string
-  lineComment: string
-}
-type KitSuggestion = {
-  id: number | null
+type CheckoutCard = {
+  id: number
   name: string
+  price: number
   image: string | null
 }
-const kitLines = ref<KitLine[]>([
-  { productName: '', quantity: '1', sizeOverride: '', lineComment: '' },
-])
+const checkoutCards = ref<CheckoutCard[]>([])
+const checkoutQtyById = ref<Record<number, number>>({})
+const checkoutCardsLoading = ref(false)
+const checkoutCardsError = ref('')
 const kitComment = ref('')
-const selectedKitLineIndex = ref(0)
-const availableKitSuggestions = ref<KitSuggestion[]>([])
-const kitSuggestionsLoading = ref(false)
-const kitSuggestionsError = ref('')
 
-async function loadKitSuggestions() {
+function parseCheckoutPrice(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? '').replace(',', '.'))
+  return Number.isFinite(n) ? n : 0
+}
+
+function checkoutQty(id: number): number {
+  return Math.max(0, Math.floor(Number(checkoutQtyById.value[id])) || 0)
+}
+
+function setCheckoutQty(id: number, quantity: number) {
+  checkoutQtyById.value = {
+    ...checkoutQtyById.value,
+    [id]: Math.max(0, Math.floor(quantity) || 0),
+  }
+}
+
+function adjustCheckoutQty(id: number, delta: number) {
+  setCheckoutQty(id, checkoutQty(id) + delta)
+}
+
+async function loadCheckoutCards() {
   if (childGender.value !== 'boy' && childGender.value !== 'girl') {
-    availableKitSuggestions.value = []
-    kitSuggestionsError.value = ''
+    checkoutCards.value = []
+    checkoutCardsError.value = ''
     return
   }
 
-  kitSuggestionsLoading.value = true
-  kitSuggestionsError.value = ''
+  checkoutCardsLoading.value = true
+  checkoutCardsError.value = ''
 
   try {
-    const response = await axios.get('/api/index', {
-      params: {
-        gender: childGender.value === 'boy' ? 'boys' : 'girls',
-        category: 'sets',
-      },
+    const response = await axios.get('/api/checkout-items', {
+      params: { gender: childGender.value === 'boy' ? 'boys' : 'girls' },
     })
-
-    const products = Array.isArray(response.data) ? response.data : []
-    const suggestions = products
+    const rows = Array.isArray(response.data) ? response.data : []
+    checkoutCards.value = rows
       .map((item: Record<string, unknown>) => {
         const rawId = item.id
-        let id: number | null = null
-        if (typeof rawId === 'number' && Number.isFinite(rawId)) {
-          id = rawId
-        } else if (typeof rawId === 'string' && rawId.trim() !== '') {
-          const n = Number(rawId)
-          id = Number.isFinite(n) ? n : null
-        }
-        const name = item.name
-        const image = item.image
+        const id = typeof rawId === 'number' ? rawId : Number(rawId)
+        const name = typeof item.name === 'string' ? item.name.trim() : ''
+        const image = typeof item.image === 'string' && item.image.trim() ? item.image : null
         return {
           id,
-          name: typeof name === 'string' ? name.trim() : '',
-          image: typeof image === 'string' && image.trim() ? image : null,
-        } satisfies KitSuggestion
+          name,
+          price: parseCheckoutPrice(item.price),
+          image,
+        } satisfies CheckoutCard
       })
-      .filter((item) => Boolean(item.name))
-
-    const uniqueByKey = new Map<string, KitSuggestion>()
-    for (const item of suggestions) {
-      const key = item.id != null ? `id:${item.id}` : `name:${item.name}`
-      if (!uniqueByKey.has(key)) {
-        uniqueByKey.set(key, item)
-      }
-    }
-
-    availableKitSuggestions.value = Array.from(uniqueByKey.values())
+      .filter((item) => Number.isFinite(item.id) && item.id > 0 && Boolean(item.name))
   } catch {
-    availableKitSuggestions.value = []
-    kitSuggestionsError.value = 'Не удалось загрузить комплекты. Можно ввести вручную.'
+    checkoutCards.value = []
+    checkoutCardsError.value = 'Не удалось загрузить изделия.'
   } finally {
-    kitSuggestionsLoading.value = false
+    checkoutCardsLoading.value = false
   }
-}
-
-function ensureValidSelectedLineIndex() {
-  if (!kitLines.value.length) {
-    addKitLine()
-  }
-  if (selectedKitLineIndex.value < 0 || selectedKitLineIndex.value >= kitLines.value.length) {
-    selectedKitLineIndex.value = 0
-  }
-}
-
-function applySuggestedKitToSelectedLine(kitName: string) {
-  ensureValidSelectedLineIndex()
-  kitLines.value[selectedKitLineIndex.value].productName = kitName
-}
-
-function addSuggestedKitAsNewLine(kitName: string) {
-  kitLines.value.push({
-    productName: kitName,
-    quantity: '1',
-    sizeOverride: '',
-    lineComment: '',
-  })
-  selectedKitLineIndex.value = kitLines.value.length - 1
-}
-
-function addKitLine() {
-  kitLines.value.push({
-    productName: '',
-    quantity: '1',
-    sizeOverride: '',
-    lineComment: '',
-  })
-  selectedKitLineIndex.value = kitLines.value.length - 1
-}
-
-function removeKitLine(index: number) {
-  if (kitLines.value.length > 1) {
-    kitLines.value.splice(index, 1)
-    if (selectedKitLineIndex.value >= kitLines.value.length) {
-      selectedKitLineIndex.value = kitLines.value.length - 1
-    }
-  }
-}
-
-function adjustKitLineQuantity(index: number, delta: number) {
-  const line = kitLines.value[index]
-  const current = Math.max(1, Math.floor(Number(line.quantity)) || 1)
-  line.quantity = String(Math.max(1, current + delta))
-}
-
-function normalizeKitLineQuantity(index: number) {
-  const line = kitLines.value[index]
-  const n = Math.floor(Number(line.quantity))
-  line.quantity = String(Number.isFinite(n) && n >= 1 ? n : 1)
 }
 
 /** +7 и до 10 цифр; пустой ввод даёт «+7» */
@@ -432,7 +337,7 @@ watch(parentPhone, () => {
 })
 
 watch(childGender, () => {
-  void loadKitSuggestions()
+  void loadCheckoutCards()
 }, { immediate: true })
 
 // Шаг 6
@@ -459,6 +364,16 @@ watch(termsAccepted, () => {
   submitError.value = ''
 })
 
+watch(classLetter, (value) => {
+  if (value.length > CLASS_LETTER_MAX_LENGTH) {
+    stepError.value = CLASS_LETTER_TOO_LONG_ERROR
+    return
+  }
+  if (stepError.value === CLASS_LETTER_TOO_LONG_ERROR) {
+    stepError.value = ''
+  }
+})
+
 function formatOrderTotalRub(n: number): string {
   return new Intl.NumberFormat('ru-RU', {
     style: 'currency',
@@ -470,7 +385,7 @@ function formatOrderTotalRub(n: number): string {
 
 function suggestionImageForProductName(name: string): string | null {
   const n = name.trim()
-  const s = availableKitSuggestions.value.find((x) => x.name === n)
+  const s = checkoutCards.value.find((x) => x.name === n)
   return s?.image ?? null
 }
 
@@ -498,13 +413,14 @@ const confirmKitRows = computed(() => {
 })
 
 function buildKitLinesForEstimate() {
-  return kitLines.value
-    .filter((l) => l.productName.trim())
-    .map((l) => ({
-      productName: l.productName.trim(),
-      quantity: Math.max(1, Math.floor(Number(l.quantity)) || 1),
-      sizeOverride: l.sizeOverride.trim() || null,
-      lineComment: l.lineComment.trim() || null,
+  return checkoutCards.value
+    .filter((card) => checkoutQty(card.id) >= 1)
+    .map((card) => ({
+      checkoutItemId: card.id,
+      productName: card.name,
+      quantity: checkoutQty(card.id),
+      sizeOverride: null as string | null,
+      lineComment: null as string | null,
     }))
 }
 
@@ -550,7 +466,7 @@ async function fetchOrderTotalEstimate() {
 }
 
 watch(
-  [step, kitLines],
+  [step, checkoutQtyById, checkoutCards],
   () => {
     if (step.value === 6) {
       void fetchOrderTotalEstimate()
@@ -604,14 +520,7 @@ function buildOrderPayload() {
     waistCm: waistCm.value.trim() || null,
     hipsCm: hipsCm.value.trim() || null,
     figureComment: figureComment.value.trim() || null,
-    kitLines: kitLines.value
-      .filter((l) => l.productName.trim())
-      .map((l) => ({
-        productName: l.productName.trim(),
-        quantity: Math.max(1, Math.floor(Number(l.quantity)) || 1),
-        sizeOverride: l.sizeOverride.trim() || null,
-        lineComment: l.lineComment.trim() || null,
-      })),
+    kitLines: buildKitLinesForEstimate(),
     kitComment: kitComment.value.trim() || null,
     parentFullName: parentFullName.value.trim(),
     parentPhone: parentPhone.value.trim(),
@@ -653,6 +562,10 @@ function validateStep(n: number): boolean {
       stepError.value = 'Заполните обязательные поля шага 1'
       return false
     }
+    if (classLetter.value.length > CLASS_LETTER_MAX_LENGTH) {
+      stepError.value = CLASS_LETTER_TOO_LONG_ERROR
+      return false
+    }
   }
   if (n === 2) {
     if (!sizeFromTable.value.trim()) {
@@ -670,11 +583,9 @@ function validateStep(n: number): boolean {
     }
   }
   if (n === 3) {
-    const ok = kitLines.value.some(
-      (l) => l.productName.trim() && Number(l.quantity) > 0,
-    )
+    const ok = checkoutCards.value.some((card) => checkoutQty(card.id) >= 1)
     if (!ok) {
-      stepError.value = 'Добавьте хотя бы одно изделие с названием и количеством'
+      stepError.value = 'Отметьте хотя бы одно изделие и укажите количество'
       return false
     }
   }
@@ -799,7 +710,7 @@ const summaryLines = computed(() => {
           .join(' / ') || '—',
     },
     { label: 'Комментарий по фигуре', value: figureComment.value || '—' },
-    { label: 'Комментарий к комплекту', value: kitComment.value || '—' },
+    { label: 'Комментарий к изделиям', value: kitComment.value || '—' },
     { label: 'ФИО родителя', value: parentFullName.value },
     { label: 'Телефон', value: parentPhone.value },
     { label: 'Email', value: emailForSummary() },
@@ -857,11 +768,19 @@ const summaryLines = computed(() => {
 
         <div v-else class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full">
           <Typography as="h1" variant="h2" class="mb-2 text-slate-900">
-            Оформление заказа для пошива
+            Заказ по нестандартному размеру
           </Typography>
-          <Typography as="p" variant="body" class="mb-8 text-slate-600">
-            Заполните данные по шагам — это займёт несколько минут.
-          </Typography>
+          <div class="mb-8 max-w-2xl">
+            <Typography as="p" variant="small" class="leading-relaxed text-slate-600">
+              Этот раздел предназначен для детей, которым не подходит наша стандартная размерная сетка. Если подходящий размер есть в таблице, рекомендуем оформить обычный заказ-это проще, быстрее, дешевле
+            </Typography>
+            <RouterLink
+              to="/catalog"
+              class="mt-2 inline-block text-sm font-medium text-slate-900 underline underline-offset-2 hover:text-slate-700"
+            >
+              Вернуться к стандартным размерам
+            </RouterLink>
+          </div>
 
           <!-- Step indicator: одна строка; при узком экране — горизонтальный свайп без лишней высоты -->
           <div class="mb-6">
@@ -1005,12 +924,12 @@ const summaryLines = computed(() => {
                 <label class="block text-sm font-medium text-slate-700 mb-1">
                   Литера <span class="text-red-600" aria-hidden="true">*</span>
                 </label>
-                <select v-model="classLetter" :class="inputClass">
-                  <option value="" disabled>Выберите</option>
-                  <option v-for="letter in classLetterSelectOptions" :key="letter" :value="letter">
-                    {{ letter }}
-                  </option>
-                </select>
+                <input
+                  v-model="classLetter"
+                  type="text"
+                  autocomplete="off"
+                  :class="inputClass"
+                />
               </div>
               <div>
                 <label class="block text-sm font-medium text-slate-700 mb-1">
@@ -1032,24 +951,33 @@ const summaryLines = computed(() => {
           <div v-show="step === 2" class="space-y-5">
             <div class="mb-4">
               <Typography as="h2" variant="h4" class="text-slate-900">
-                Шаг 2. Размер
+                Шаг 2. Мерки
               </Typography>
               <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
                 {{ stepSubtitles[1] }}
               </p>
             </div>
             <div>
-              <label for="order-size-from-table" class="block text-sm font-medium text-slate-700 mb-1">
-                Размер по таблице <span class="text-red-600" aria-hidden="true">*</span>
-              </label>
               <a
                 href="/sizes"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="mb-2 inline-block text-sm font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2"
+                class="inline-block text-sm font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2"
               >
                 Смотреть таблицу размеров
               </a>
+              <p class="mt-1.5 mb-3 max-w-xl text-xs leading-relaxed text-slate-500">
+                Не уверены в размере? Сравните мерки ребенка с таблицей. Небольшое отличие от указанных параметров не означает, что нужен индивидуальный пошив.
+                <RouterLink
+                  to="/catalog"
+                  class="font-medium text-slate-900 underline underline-offset-2 hover:text-slate-700"
+                >
+                  Вернуться к стандартным размерам
+                </RouterLink>
+              </p>
+              <label for="order-size-from-table" class="block text-sm font-medium text-slate-700 mb-1">
+                Размер по таблице <span class="text-red-600" aria-hidden="true">*</span>
+              </label>
               <select
                 id="order-size-from-table"
                 v-model="sizeFromTable"
@@ -1168,183 +1096,89 @@ const summaryLines = computed(() => {
           <div v-show="step === 3" class="space-y-5">
             <div class="mb-4">
               <Typography as="h2" variant="h4" class="text-slate-900">
-                Шаг 3. Комплект
+                Шаг 3. Изделие
               </Typography>
               <p class="mt-1.5 text-sm text-slate-600 leading-relaxed">
                 {{ stepSubtitles[2] }}
               </p>
+              <p class="mt-2 text-sm text-slate-600 leading-relaxed">
+                В «нестандартном пошиве» цена дороже, чем в обычном заказе. Цена на этом шаге может отличаться от цены в каталоге.
+              </p>
             </div>
             <div :class="stepCardClass">
-            <div class="rounded-lg border border-neutral-200 bg-white p-4">
-              <p class="text-sm font-medium text-slate-800">
-                Доступные комплекты
-                {{ childGender === 'boy' ? 'для мальчиков' : childGender === 'girl' ? 'для девочек' : '' }}
-              </p>
-              <p v-if="!childGender" class="mt-1 text-xs text-slate-500">
-                Выберите пол ребёнка на шаге 1, чтобы увидеть рекомендации.
-              </p>
-              <template v-else>
-                <p v-if="kitSuggestionsLoading" class="mt-1 text-xs text-slate-500">
-                  Загружаем доступные комплекты...
-                </p>
-                <p v-else-if="kitSuggestionsError" class="mt-1 text-xs text-red-600">
-                  {{ kitSuggestionsError }}
-                </p>
-                <p v-else-if="availableKitSuggestions.length === 0" class="mt-1 text-xs text-slate-500">
-                  Для выбранного пола пока нет готовых комплектов.
-                </p>
-                <div v-else class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div
-                    v-for="kit in availableKitSuggestions"
-                    :key="kit.id != null ? kit.id : kit.name"
-                    class="rounded-md border border-slate-300 bg-white p-2"
-                  >
-                    <div class="flex items-center gap-3">
-                      <a
-                        v-if="kit.id != null"
-                        :href="`/product/${kit.id}`"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="group shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
-                        :title="'Открыть страницу товара в новой вкладке'"
-                        @click.stop
-                      >
-                        <img
-                          v-if="kit.image"
-                          :src="resolveBackendMediaUrl(kit.image)"
-                          :alt="kit.name"
-                          class="h-14 w-14 rounded object-cover border border-neutral-200 transition group-hover:ring-2 group-hover:ring-slate-400"
-                        />
-                        <div
-                          v-else
-                          class="flex h-14 w-14 items-center justify-center rounded border border-dashed border-neutral-300 bg-neutral-100 text-[10px] text-slate-500 transition group-hover:ring-2 group-hover:ring-slate-400"
-                        >
-                          фото
-                        </div>
-                      </a>
-                      <template v-else>
-                        <img
-                          v-if="kit.image"
-                          :src="resolveBackendMediaUrl(kit.image)"
-                          :alt="kit.name"
-                          class="h-14 w-14 rounded object-cover border border-neutral-200 shrink-0"
-                        />
-                        <div
-                          v-else
-                          class="h-14 w-14 rounded border border-dashed border-neutral-300 bg-neutral-100 shrink-0"
-                          aria-hidden="true"
-                        />
-                      </template>
-                      <span class="text-sm text-slate-700">{{ kit.name }}</span>
-                    </div>
-                    <div class="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                        @click="applySuggestedKitToSelectedLine(kit.name)"
-                      >
-                        Добавить +
-                      </button>
-                      <button
-                        type="button"
-                        class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                        @click="addSuggestedKitAsNewLine(kit.name)"
-                      >
-                        В новую позицию +
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
-            <datalist v-if="availableKitSuggestions.length" id="kit-name-suggestions">
-              <option v-for="kit in availableKitSuggestions" :key="kit.name" :value="kit.name" />
-            </datalist>
-            <div
-              v-for="(line, idx) in kitLines"
-              :key="idx"
-              class="rounded-lg border border-neutral-200 p-4 space-y-3"
-            >
-              <div class="flex justify-between items-center">
-                <span class="text-sm font-medium text-slate-700">Позиция {{ idx + 1 }}</span>
-                <button
-                  v-if="kitLines.length > 1"
-                  type="button"
-                  class="text-sm text-red-600 hover:underline"
-                  @click="removeKitLine(idx)"
-                >
-                  Удалить
-                </button>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">
-                  Наименование изделия <span class="text-red-600" aria-hidden="true">*</span>
-                </label>
-                <input
-                  v-model="line.productName"
-                  type="text"
-                  :class="inputClass"
-                  :list="availableKitSuggestions.length ? 'kit-name-suggestions' : undefined"
-                  @focus="selectedKitLineIndex = idx"
+            <p v-if="!childGender" class="text-sm text-slate-500">
+              Выберите пол ребёнка на шаге 1, чтобы увидеть изделия.
+            </p>
+            <p v-else-if="checkoutCardsLoading" class="text-sm text-slate-500">
+              Загружаем изделия...
+            </p>
+            <p v-else-if="checkoutCardsError" class="text-sm text-red-600">
+              {{ checkoutCardsError }}
+            </p>
+            <p v-else-if="checkoutCards.length === 0" class="text-sm text-slate-500">
+              Для выбранного пола пока нет изделий.
+            </p>
+            <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div
+                v-for="card in checkoutCards"
+                :key="card.id"
+                class="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
+              >
+                <img
+                  v-if="card.image"
+                  :src="resolveBackendMediaUrl(card.image)"
+                  :alt="card.name"
+                  class="h-44 w-full object-cover bg-neutral-100"
                 />
-              </div>
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Количество <span class="text-red-600" aria-hidden="true">*</span>
-                  </label>
-                  <div
-                    class="flex h-8 w-full max-w-[9rem] items-stretch overflow-hidden rounded border border-neutral-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-slate-400"
-                  >
-                    <button
-                      type="button"
-                      class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-neutral-50 text-lg font-bold leading-none text-slate-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:bg-neutral-50 disabled:text-slate-400 disabled:hover:bg-neutral-50"
-                      :disabled="Math.max(1, Math.floor(Number(line.quantity)) || 1) <= 1"
-                      aria-label="Уменьшить количество"
-                      @click="adjustKitLineQuantity(idx, -1)"
+                <div
+                  v-else
+                  class="flex h-44 w-full items-center justify-center border-b border-dashed border-neutral-200 bg-neutral-100 text-sm text-slate-500"
+                >
+                  фото
+                </div>
+                <div class="p-3 space-y-3">
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900 leading-snug">{{ card.name }}</p>
+                    <p class="mt-1 text-sm font-medium text-slate-800 tabular-nums">
+                      Цена: {{ formatOrderTotalRub(card.price) }}
+                    </p>
+                  </div>
+                  <div>
+                    <span class="block text-xs font-medium text-slate-600 mb-1.5">Количество</span>
+                    <div
+                      class="flex h-8 w-full max-w-[10.5rem] items-stretch overflow-hidden rounded border border-neutral-200 bg-white"
                     >
-                      −
-                    </button>
-                    <input
-                      v-model="line.quantity"
-                      type="number"
-                      min="1"
-                      class="min-w-0 flex-1 basis-0 border-0 bg-white px-0.5 py-0 text-center text-base font-bold tabular-nums leading-none text-slate-900 focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                      @blur="normalizeKitLineQuantity(idx)"
-                    />
-                    <button
-                      type="button"
-                      class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-neutral-50 text-lg font-bold leading-none text-slate-700 transition hover:bg-neutral-100"
-                      aria-label="Увеличить количество"
-                      @click="adjustKitLineQuantity(idx, 1)"
-                    >
-                      +
-                    </button>
+                      <button
+                        type="button"
+                        class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-neutral-50 text-lg font-bold leading-none text-slate-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:text-slate-400"
+                        :disabled="checkoutQty(card.id) <= 0"
+                        aria-label="Уменьшить количество"
+                        @click="adjustCheckoutQty(card.id, -1)"
+                      >
+                        −
+                      </button>
+                      <span
+                        class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-white text-base font-bold tabular-nums text-slate-900"
+                      >
+                        {{ checkoutQty(card.id) }}
+                      </span>
+                      <button
+                        type="button"
+                        class="flex min-w-0 flex-1 basis-0 items-center justify-center bg-neutral-50 text-lg font-bold leading-none text-slate-700 transition hover:bg-neutral-100"
+                        aria-label="Увеличить количество"
+                        @click="adjustCheckoutQty(card.id, 1)"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div class="sm:col-span-2">
-                  <label class="block text-sm font-medium text-slate-700 mb-1">
-                    Размер по позиции, если отличается от общего
-                  </label>
-                  <input v-model="line.sizeOverride" type="text" :class="inputClass" />
-                </div>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-slate-700 mb-1">Комментарий</label>
-                <input v-model="line.lineComment" type="text" :class="inputClass" />
               </div>
             </div>
-            <Button type="button" variant="outline" size="sm" @click="addKitLine">
-              + Добавить позицию
-            </Button>
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1">Комментарий к комплекту</label>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Комментарий к заказу</label>
               <textarea v-model="kitComment" rows="3" :class="inputClass" />
             </div>
-            <p class="text-xs text-slate-500 pt-1">
-              <span class="text-red-600" aria-hidden="true">*</span>
-              обязательные поля для заполнения
-            </p>
             </div>
           </div>
 
@@ -1486,11 +1320,14 @@ const summaryLines = computed(() => {
                     : '—'
                 }}
               </Typography>
+              <p class="mt-1.5 text-xs text-slate-600 leading-relaxed">
+                В «нестандартном пошиве» цена дороже, чем в обычном заказе, и может отличаться от цены в каталоге.
+              </p>
             </div>
 
             <div class="mb-4">
               <Typography as="h3" variant="body" class="text-sm font-medium text-slate-500 mb-3">
-                Комплект
+                Изделие
               </Typography>
               <div class="space-y-3">
                 <div
