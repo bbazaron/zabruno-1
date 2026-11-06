@@ -1,11 +1,37 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import Card from '../ui/Card.vue'
 import Button from '../ui/Button.vue'
 import Typography from '../ui/Typography.vue'
 import { Calendar, CheckCircle2, Leaf } from 'lucide-vue-next'
 
 const router = useRouter()
+const showCustomSizeButton = ref(true)
+const showCatalogOrderButton = ref(true)
+
+onMounted(async () => {
+  try {
+    const response = await axios.get<{
+      custom_size?: boolean
+      catalog_order?: boolean
+      visible?: boolean
+    }>('/api/settings/home-order-buttons')
+    const data = response.data
+    if (typeof data?.custom_size === 'boolean' || typeof data?.catalog_order === 'boolean') {
+      showCustomSizeButton.value = data.custom_size !== false
+      showCatalogOrderButton.value = data.catalog_order !== false
+      return
+    }
+    const visible = data?.visible !== false
+    showCustomSizeButton.value = visible
+    showCatalogOrderButton.value = visible
+  } catch {
+    showCustomSizeButton.value = true
+    showCatalogOrderButton.value = true
+  }
+})
 
 function hasAuthToken(): boolean {
   return !!(localStorage.getItem('auth_token') || localStorage.getItem('token'))
@@ -101,12 +127,29 @@ const cards = [
               </div>
 
               <!-- CTAs -->
-              <div class="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-4 sm:pt-2">
-                <Button variant="primary" size="lg" type="button" class="w-full sm:w-auto" @click="goToOrderCheckout">
+              <div
+                v-if="showCustomSizeButton || showCatalogOrderButton"
+                class="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-4 sm:pt-2"
+              >
+                <Button
+                  v-if="showCustomSizeButton"
+                  variant="primary"
+                  size="lg"
+                  type="button"
+                  class="w-full sm:w-auto"
+                  @click="goToOrderCheckout"
+                >
                   Нестандартный <br>
                   размер →
                 </Button>
-                <Button variant="secondary" size="lg" as="link" href="/catalog" class="w-full sm:w-auto">
+                <Button
+                  v-if="showCatalogOrderButton"
+                  variant="secondary"
+                  size="lg"
+                  as="link"
+                  href="/catalog"
+                  class="w-full sm:w-auto"
+                >
                   Заказать <br>
                   школьную форму  →
                 </Button>

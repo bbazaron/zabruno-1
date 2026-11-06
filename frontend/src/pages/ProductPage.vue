@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import axios from 'axios'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -46,7 +46,13 @@ const selectedItemGender = ref<SelectedItemGender>('boy')
 const cartLoading = ref(false)
 const availableSizes = ref<string[]>([])
 const availableClassNumbers = Array.from({ length: 11 }, (_, i) => String(i + 1))
-const availableClassLetters = ['А', 'Б', 'В', 'Г', 'Д', 'Е', 'Ж', 'З', 'И', 'К', 'Л', 'М']
+const CLASS_LETTER_MAX_LENGTH = 30
+const CLASS_LETTER_TOO_LONG_ERROR = 'Литера: не больше 30 символов'
+const classLetterError = ref('')
+
+watch(selectedClassLetter, (value) => {
+  classLetterError.value = value.length > CLASS_LETTER_MAX_LENGTH ? CLASS_LETTER_TOO_LONG_ERROR : ''
+})
 const cartByVariant = ref<Record<string, number>>({})
 
 type ProductMediaEntry = string | { url?: string | null }
@@ -202,8 +208,9 @@ function cartVariantKey(
 }
 
 function selectedClassLabel(): string {
-  if (!selectedClassNumber.value || !selectedClassLetter.value) return ''
-  return `${selectedClassNumber.value}${selectedClassLetter.value}`
+  const letter = selectedClassLetter.value.trim()
+  if (!selectedClassNumber.value || !letter) return ''
+  return `${selectedClassNumber.value}${letter}`
 }
 
 function resetSelectedClass(): void {
@@ -291,6 +298,11 @@ async function addToCartAction() {
 
   if (productRequiresGenderChoice.value && !genderToSend) {
     showToast('Выберите пол', 'error')
+    return
+  }
+  if (selectedClassLetter.value.length > CLASS_LETTER_MAX_LENGTH) {
+    classLetterError.value = CLASS_LETTER_TOO_LONG_ERROR
+    showToast(CLASS_LETTER_TOO_LONG_ERROR, 'error')
     return
   }
 
@@ -447,15 +459,15 @@ async function addToCartAction() {
                   {{ number }}
                 </option>
               </select>
-              <select
+              <input
                 v-model="selectedClassLetter"
-                class="px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white"
-              >
-                <option value="">Литера</option>
-                <option v-for="letter in availableClassLetters" :key="letter" :value="letter">
-                  {{ letter }}
-                </option>
-              </select>
+                type="text"
+                autocomplete="off"
+                placeholder="Литера"
+                aria-label="Литера"
+                class="px-3 py-1.5 text-sm rounded-md border bg-white w-40"
+                :class="classLetterError ? 'border-red-500' : 'border-slate-300'"
+              />
               <div v-if="selectedClassLabel()" class="flex items-center gap-2">
                 <span class="text-sm text-slate-600">
                   Будет напечатано: <span class="font-medium text-slate-900">{{ selectedClassLabel() }}</span>
@@ -469,6 +481,7 @@ async function addToCartAction() {
                 </button>
               </div>
             </div>
+            <p v-if="classLetterError" class="mt-2 text-sm text-red-600">{{ classLetterError }}</p>
           </div>
           <div class="text-2xl font-bold text-slate-900 mt-4">
             {{ product.price }} ₽

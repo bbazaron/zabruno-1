@@ -73,6 +73,17 @@ const defaultColorDraft = ref('')
 const defaultColorRenames = ref<Array<{ from: string; to: string }>>([])
 const editingDefaultColorValue = ref<string | null>(null)
 const editingDefaultColorDraft = ref('')
+const showHomeOrderButtonsPanel = ref(false)
+const showCustomSizeButton = ref(true)
+const showCatalogOrderButton = ref(true)
+const homeOrderButtonsLoading = ref(false)
+const homeOrderButtonsSaving = ref(false)
+const homeOrderButtonsSubtitle = computed(() => {
+  if (showCustomSizeButton.value && showCatalogOrderButton.value) return 'Показаны обе кнопки'
+  if (showCustomSizeButton.value) return 'Показана только «Нестандартный размер»'
+  if (showCatalogOrderButton.value) return 'Показана только «Заказать школьную форму»'
+  return 'Обе кнопки скрыты'
+})
 const showPickupAddressPanel = ref(false)
 const pickupAddressDraft = ref('')
 const pickupAddressSaving = ref(false)
@@ -146,6 +157,50 @@ function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem(AUTH_TOKEN_KEY) || localStorage.getItem('token')
   if (token) headers.Authorization = `Bearer ${token}`
   return headers
+}
+
+function applyHomeOrderButtons(data: { custom_size?: boolean; catalog_order?: boolean }) {
+  showCustomSizeButton.value = data.custom_size !== false
+  showCatalogOrderButton.value = data.catalog_order !== false
+}
+
+async function loadHomeOrderButtonsSetting() {
+  homeOrderButtonsLoading.value = true
+  try {
+    const res = await axios.get<{ custom_size?: boolean; catalog_order?: boolean }>(
+      '/api/admin/settings/home-order-buttons',
+      { headers: getAuthHeaders() },
+    )
+    applyHomeOrderButtons(res.data ?? {})
+  } catch {
+    showToast('Не удалось загрузить настройку кнопок на главной', 'error')
+  } finally {
+    homeOrderButtonsLoading.value = false
+  }
+}
+
+async function saveHomeOrderButtonsSetting() {
+  homeOrderButtonsSaving.value = true
+  try {
+    const res = await axios.patch<{ custom_size?: boolean; catalog_order?: boolean; message?: string }>(
+      '/api/admin/settings/home-order-buttons',
+      {
+        custom_size: showCustomSizeButton.value,
+        catalog_order: showCatalogOrderButton.value,
+      },
+      { headers: getAuthHeaders() },
+    )
+    applyHomeOrderButtons(res.data ?? {})
+    showToast(
+      typeof res.data?.message === 'string' ? res.data.message : 'Кнопки на главной сохранены',
+      'success',
+    )
+  } catch (err) {
+    showToast(formatApiError(err), 'error')
+    await loadHomeOrderButtonsSetting()
+  } finally {
+    homeOrderButtonsSaving.value = false
+  }
 }
 
 async function loadPickupAddressSetting() {
@@ -758,6 +813,7 @@ onMounted(() => {
   resetForm()
   void loadProducts()
   void loadPickupAddressSetting()
+  void loadHomeOrderButtonsSetting()
 })
 </script>
 
@@ -792,6 +848,82 @@ onMounted(() => {
         <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами
         </Button>
+      </div>
+
+      <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 mb-6 shadow-sm">
+        <button
+          type="button"
+          class="flex w-full cursor-pointer items-start gap-3 text-left"
+          :aria-expanded="showHomeOrderButtonsPanel"
+          @click="showHomeOrderButtonsPanel = !showHomeOrderButtonsPanel"
+        >
+          <ChevronDown
+            :size="20"
+            class="mt-0.5 shrink-0 text-slate-500 transition-transform duration-200"
+            :class="showHomeOrderButtonsPanel ? 'rotate-180' : ''"
+          />
+          <span class="min-w-0 flex-1">
+            <span class="block text-lg font-medium text-slate-900">Кнопки на главной</span>
+            <span class="block text-sm text-slate-600">{{ homeOrderButtonsSubtitle }}</span>
+          </span>
+        </button>
+        <div v-if="showHomeOrderButtonsPanel" class="mt-4 border-t border-neutral-100 pt-4">
+          <p class="text-xs text-slate-500 mb-3">
+            Каждую кнопку можно скрыть отдельно. Предпросмотр повторяет вид на главной. Каталог и остальные страницы остаются доступны.
+          </p>
+          <div v-if="homeOrderButtonsLoading" class="text-sm text-slate-600">Загрузка…</div>
+          <div v-else class="space-y-4">
+            <label class="flex items-start gap-3 text-sm text-slate-800">
+              <input
+                v-model="showCustomSizeButton"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 rounded border-neutral-300"
+                :disabled="homeOrderButtonsSaving"
+                @change="saveHomeOrderButtonsSetting"
+              />
+              <span>Показывать «Нестандартный размер»</span>
+            </label>
+            <label class="flex items-start gap-3 text-sm text-slate-800">
+              <input
+                v-model="showCatalogOrderButton"
+                type="checkbox"
+                class="mt-0.5 h-4 w-4 rounded border-neutral-300"
+                :disabled="homeOrderButtonsSaving"
+                @change="saveHomeOrderButtonsSetting"
+              />
+              <span>Показывать «Заказать школьную форму»</span>
+            </label>
+            <div class="rounded-lg bg-[#e9e8e6] p-4">
+              <p class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Предпросмотр</p>
+              <div
+                v-if="showCustomSizeButton || showCatalogOrderButton"
+                class="flex flex-col gap-3 sm:flex-row"
+              >
+                <Button
+                  v-if="showCustomSizeButton"
+                  variant="primary"
+                  size="lg"
+                  type="button"
+                  class="pointer-events-none w-full sm:w-auto"
+                >
+                  Нестандартный <br>
+                  размер →
+                </Button>
+                <Button
+                  v-if="showCatalogOrderButton"
+                  variant="secondary"
+                  size="lg"
+                  type="button"
+                  class="pointer-events-none w-full sm:w-auto"
+                >
+                  Заказать <br>
+                  школьную форму →
+                </Button>
+              </div>
+              <p v-else class="text-sm text-slate-600">На главной кнопки не показываются.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 mb-6 shadow-sm">

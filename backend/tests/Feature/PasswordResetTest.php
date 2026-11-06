@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\PasswordResetCode;
 use App\Models\User;
+use App\Services\PasswordResetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -23,8 +24,8 @@ class PasswordResetTest extends TestCase
             'email' => 'parent@example.com',
         ]);
 
-        $response->assertOk();
-        Mail::assertQueued(PasswordResetCode::class, function (PasswordResetCode $mail) use ($user) {
+        $response->assertOk()->assertJsonPath('message', 'Код отправлен на почту');
+        Mail::assertSent(PasswordResetCode::class, function (PasswordResetCode $mail) use ($user) {
             return $mail->user->is($user) && strlen($mail->code) === 6;
         });
         $this->assertDatabaseHas('password_reset_tokens', [
@@ -32,7 +33,7 @@ class PasswordResetTest extends TestCase
         ]);
     }
 
-    public function test_forgot_does_not_reveal_missing_account(): void
+    public function test_forgot_reports_missing_account(): void
     {
         Mail::fake();
 
@@ -40,9 +41,44 @@ class PasswordResetTest extends TestCase
             'email' => 'nobody@example.com',
         ]);
 
-        $response->assertOk();
-        Mail::assertNothingQueued();
+        $response->assertStatus(422)->assertJsonPath('message', 'Аккаунт с такой почтой не найден');
+        Mail::assertNothingSent();
         $this->assertDatabaseCount('password_reset_tokens', 0);
+    }
+
+    public function test_failed_mail_does_not_start_resend_cooldown(): void
+    {
+        $user = User::factory()->create(['email' => 'parent@example.com']);
+        Mail::shouldReceive('to')->twice()->andReturnUsing(function () {
+            $pending = \Mockery::mock();
+            $pending->shouldReceive('send')->once()->andThrow(new \RuntimeException('SMTP connection refused'));
+
+            return $pending;
+        });
+
+        $this->postJson('/api/password/forgot', ['email' => $user->email])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'SMTP connection refused');
+
+        $this->assertDatabaseCount('password_reset_tokens', 0);
+
+        $this->postJson('/api/password/forgot', ['email' => $user->email])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'SMTP connection refused');
+    }
+
+    public function test_forgot_rejects_resend_within_interval(): void
+    {
+        Mail::fake();
+        $user = User::factory()->create(['email' => 'parent@example.com']);
+
+        $this->postJson('/api/password/forgot', ['email' => $user->email])->assertOk();
+
+        $this->postJson('/api/password/forgot', ['email' => $user->email])
+            ->assertStatus(429)
+            ->assertJsonStructure(['message', 'retry_after']);
+
+        Mail::assertSent(PasswordResetCode::class, 1);
     }
 
     public function test_user_can_reset_password_with_valid_code(): void
@@ -56,7 +92,7 @@ class PasswordResetTest extends TestCase
         $this->postJson('/api/password/forgot', ['email' => $user->email])->assertOk();
 
         $code = null;
-        Mail::assertQueued(PasswordResetCode::class, function (PasswordResetCode $mail) use (&$code) {
+        Mail::assertSent(PasswordResetCode::class, function (PasswordResetCode $mail) use (&$code) {
             $code = $mail->code;
 
             return true;
@@ -99,7 +135,7 @@ class PasswordResetTest extends TestCase
         DB::table('password_reset_tokens')->insert([
             'email' => $user->email,
             'token' => Hash::make('123456'),
-            'created_at' => now()->subMinutes(20),
+            'created_at' => now()->subMinutes(PasswordResetService::CODE_TTL_MINUTES + 1),
         ]);
 
         $this->postJson('/api/password/reset', [

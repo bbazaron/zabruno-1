@@ -15,10 +15,23 @@ class PasswordResetController extends Controller
 
     public function forgot(ForgotPasswordRequest $request)
     {
-        $this->passwordReset->requestCode($request->validated('email'));
+        try {
+            $retryAfter = $this->passwordReset->requestCode($request->validated('email'));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        if ($retryAfter !== null) {
+            return response()->json([
+                'message' => 'Повторная отправка будет доступна через '.$retryAfter.' с',
+                'retry_after' => $retryAfter,
+            ], 429);
+        }
 
         return response()->json([
-            'message' => 'Если такой аккаунт есть, мы отправим код на почту',
+            'message' => 'Код отправлен на почту',
         ]);
     }
 

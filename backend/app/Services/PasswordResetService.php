@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Hash;
 
 class PasswordResetService
 {
-    public const CODE_TTL_MINUTES = 15;
+    public const CODE_TTL_MINUTES = 10;
 
     public const RESEND_INTERVAL_SECONDS = 60;
 
@@ -18,19 +18,24 @@ class PasswordResetService
     ) {}
 
     /**
-     * Если пользователь есть — сохраняет хеш кода и ставит письмо в очередь.
-     * Ответ клиенту всегда одинаковый, чтобы не раскрывать наличие аккаунта.
+     * Сохраняет хеш кода и отправляет письмо.
+     * Возвращает число секунд до повторной отправки, если код уже запрошен недавно.
+     *
+     * @throws \RuntimeException если аккаунта нет
+     * @throws \Throwable если письмо не удалось отправить
      */
-    public function requestCode(string $email): void
+    public function requestCode(string $email): ?int
     {
         $user = $this->findUserByEmail($email);
         if ($user === null) {
-            return;
+            throw new \RuntimeException('Аккаунт с такой почтой не найден');
         }
 
         $existing = DB::table('password_reset_tokens')->where('email', $user->email)->first();
         if ($existing !== null && $this->isRecent((string) ($existing->created_at ?? ''))) {
-            return;
+            $elapsed = now()->getTimestamp() - Carbon::parse((string) $existing->created_at)->getTimestamp();
+
+            return max(1, self::RESEND_INTERVAL_SECONDS - $elapsed);
         }
 
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
@@ -43,7 +48,15 @@ class PasswordResetService
             ],
         );
 
-        $this->mail->queue($user, $code);
+        try {
+            $this->mail->send($user, $code);
+        } catch (\Throwable $e) {
+            DB::table('password_reset_tokens')->where('email', $user->email)->delete();
+
+            throw $e;
+        }
+
+        return null;
     }
 
     public function verifyCode(string $email, string $code): bool

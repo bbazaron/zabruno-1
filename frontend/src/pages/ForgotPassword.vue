@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import Header from '../components/sections/Header.vue'
@@ -18,6 +18,27 @@ const password = ref('')
 const passwordConfirmation = ref('')
 const error = ref('')
 const loading = ref(false)
+const resending = ref(false)
+const resendIn = ref(0)
+const RESEND_COOLDOWN_SECONDS = 60
+let resendTimer: ReturnType<typeof setInterval> | null = null
+
+function startResendCooldown(seconds = RESEND_COOLDOWN_SECONDS) {
+  resendIn.value = seconds
+  if (resendTimer) clearInterval(resendTimer)
+  resendTimer = setInterval(() => {
+    resendIn.value -= 1
+    if (resendIn.value <= 0) {
+      resendIn.value = 0
+      if (resendTimer) clearInterval(resendTimer)
+      resendTimer = null
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (resendTimer) clearInterval(resendTimer)
+})
 
 const inputClass =
   'w-full border border-neutral-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent'
@@ -49,16 +70,46 @@ async function submitEmail() {
 
   loading.value = true
   try {
-    await axios.post('/api/password/forgot', { email: value })
+    const response = await axios.post('/api/password/forgot', { email: value })
     email.value = value
     step.value = 'code'
     code.value = ''
-    showToast('Если такой аккаунт есть, мы отправим код на почту', 'success')
+    startResendCooldown()
+    showToast(
+      typeof response.data?.message === 'string' ? response.data.message : 'Код отправлен на почту',
+      'success',
+    )
   } catch (err: unknown) {
     error.value = formatApiError(err, 'Не удалось отправить код. Попробуйте снова.')
     showToast(error.value, 'error')
   } finally {
     loading.value = false
+  }
+}
+
+async function resendCode() {
+  if (loading.value || resendIn.value > 0) return
+  error.value = ''
+  loading.value = true
+  resending.value = true
+  try {
+    const response = await axios.post('/api/password/forgot', { email: email.value })
+    code.value = ''
+    startResendCooldown()
+    showToast(
+      typeof response.data?.message === 'string' ? response.data.message : 'Код отправлен на почту',
+      'success',
+    )
+  } catch (err: unknown) {
+    const retryAfter = (err as { response?: { data?: { retry_after?: number } } }).response?.data?.retry_after
+    if (typeof retryAfter === 'number' && retryAfter > 0) {
+      startResendCooldown(retryAfter)
+    }
+    error.value = formatApiError(err, 'Не удалось отправить код. Попробуйте снова.')
+    showToast(error.value, 'error')
+  } finally {
+    loading.value = false
+    resending.value = false
   }
 }
 
@@ -152,7 +203,7 @@ const subtitle = {
           {{ subtitle.email }}
         </template>
         <template v-else-if="step === 'code'">
-          Код отправлен на {{ email }}. Введите его ниже.
+          Код отправлен на {{ email }}. Он действует 10 минут.
         </template>
         <template v-else>
           {{ subtitle.password }}
@@ -197,7 +248,16 @@ const subtitle = {
           />
         </div>
         <Button type="submit" variant="primary" class="w-full mt-2" :disabled="loading">
-          {{ loading ? 'Проверка…' : 'Подтвердить код' }}
+          {{ loading && !resending ? 'Проверка…' : 'Подтвердить код' }}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          class="w-full"
+          :disabled="loading || resendIn > 0"
+          @click="resendCode"
+        >
+          {{ resending ? 'Отправка…' : resendIn > 0 ? `Отправить код заново через ${resendIn} с` : 'Отправить код заново' }}
         </Button>
         <button
           type="button"

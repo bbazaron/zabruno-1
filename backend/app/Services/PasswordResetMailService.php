@@ -9,22 +9,23 @@ use Illuminate\Support\Facades\Mail;
 
 class PasswordResetMailService
 {
-    public function queue(User $user, string $code): void
+    public function send(User $user, string $code): void
     {
         $email = trim((string) $user->email);
         if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return;
+            throw new \InvalidArgumentException('У пользователя некорректный email');
         }
 
         try {
-            Mail::to($email)->queue(new PasswordResetCode($user, $code));
+            Mail::to($email)->send(new PasswordResetCode($user, $code));
         } catch (\Throwable $e) {
-            Log::error('Не удалось поставить в очередь письмо с кодом восстановления пароля', [
+            Log::error('Не удалось отправить письмо с кодом восстановления пароля', [
                 'user_id' => $user->id,
-                'queue_connection' => 'database',
                 'exception' => $e,
             ]);
             report($e);
+
+            throw $e;
         }
     }
 }

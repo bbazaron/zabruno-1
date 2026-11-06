@@ -152,13 +152,8 @@ class CartService
 
     private function normalizeClass(?string $value): ?string
     {
-        $raw = mb_strtoupper(trim((string) ($value ?? '')));
-        if ($raw === '') {
-            return null;
-        }
-
-        $raw = preg_replace('/\s+/u', '', $raw) ?? '';
-        if ($raw === '' || preg_match('/^\d{1,2}[А-ЯA-Z]$/u', $raw) !== 1) {
+        $raw = trim((string) ($value ?? ''));
+        if ($raw === '' || mb_strlen($raw) > 32) {
             return null;
         }
 

@@ -39,7 +39,7 @@ class CartController extends Controller
             'quantity' => ['nullable', 'integer', 'min:1'],
             'selected_size' => ['nullable', 'string', 'max:16'],
             'selected_color' => ['nullable', 'string', 'max:255'],
-            'selected_class' => ['nullable', 'string', 'max:32', 'regex:/^\d{1,2}\s*[А-ЯA-Z]$/u'],
+            'selected_class' => ['nullable', 'string', 'max:32'],
             'selected_gender' => ['nullable', 'string', 'in:boy,girl,boys,girls'],
         ]);
 
