@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import Typography from '../components/ui/Typography.vue'
 import Button from '../components/ui/Button.vue'
 import Header from '../components/sections/Header.vue'
@@ -23,11 +23,34 @@ const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 const personalDataConsent = ref(false)
 const loading = ref(false)
+const resending = ref(false)
 const errorMessage = ref('')
+const step = ref<'form' | 'code'>('form')
+const code = ref('')
+const resendIn = ref(0)
+const RESEND_COOLDOWN_SECONDS = 60
+let resendTimer: ReturnType<typeof setInterval> | null = null
 
 const goToLogin = () => {
   router.push('/login')
 }
+
+function startResendCooldown(seconds = RESEND_COOLDOWN_SECONDS) {
+  resendIn.value = seconds
+  if (resendTimer) clearInterval(resendTimer)
+  resendTimer = setInterval(() => {
+    resendIn.value -= 1
+    if (resendIn.value <= 0) {
+      resendIn.value = 0
+      if (resendTimer) clearInterval(resendTimer)
+      resendTimer = null
+    }
+  }, 1000)
+}
+
+onUnmounted(() => {
+  if (resendTimer) clearInterval(resendTimer)
+})
 
 function formatRegisterError(err: unknown): string {
   const e = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }
@@ -67,21 +90,80 @@ async function registerUser() {
       headers: { Accept: 'application/json' },
     })
 
-    const token = response.data?.token
-    if (typeof token === 'string' && token.length > 0) {
-      localStorage.setItem(AUTH_TOKEN_KEY, token)
-    }
-
-    // ✅ Показываем toast
-    showToast('Вы успешно зарегистрировались! Теперь войдите в аккаунт', 'success')
-
-    router.push('/login') // редирект на страницу логина
+    step.value = 'code'
+    code.value = ''
+    startResendCooldown()
+    showToast(
+      typeof response.data?.message === 'string' ? response.data.message : 'Код отправлен на почту',
+      'success',
+    )
   } catch (err: unknown) {
     console.error(err)
     errorMessage.value = formatRegisterError(err)
     showToast(errorMessage.value, 'error') // тоже через toast
   } finally {
     loading.value = false
+  }
+}
+
+function onCodeInput(raw: string) {
+  code.value = raw.replace(/\D/g, '').slice(0, 6)
+  if (errorMessage.value) errorMessage.value = ''
+}
+
+async function confirmRegistration() {
+  errorMessage.value = ''
+  if (code.value.length !== 6) {
+    errorMessage.value = 'Введите шестизначный код из письма'
+    return
+  }
+
+  loading.value = true
+  try {
+    const response = await axios.post('/api/register/confirm', {
+      email: email.value.trim(),
+      code: code.value,
+    }, {
+      headers: { Accept: 'application/json' },
+    })
+
+    const token = response.data?.token
+    if (typeof token === 'string' && token.length > 0) {
+      localStorage.setItem(AUTH_TOKEN_KEY, token)
+    }
+
+    showToast('Вы успешно зарегистрировались! Теперь войдите в аккаунт', 'success')
+    router.push('/login')
+  } catch (err: unknown) {
+    errorMessage.value = formatRegisterError(err)
+    showToast(errorMessage.value, 'error')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function resendCode() {
+  if (loading.value || resendIn.value > 0) return
+  errorMessage.value = ''
+  loading.value = true
+  resending.value = true
+  try {
+    await axios.post('/api/register/resend', { email: email.value.trim() }, {
+      headers: { Accept: 'application/json' },
+    })
+    code.value = ''
+    startResendCooldown()
+    showToast('Код отправлен на почту', 'success')
+  } catch (err: unknown) {
+    const retryAfter = (err as { response?: { data?: { retry_after?: number } } }).response?.data?.retry_after
+    if (typeof retryAfter === 'number' && retryAfter > 0) {
+      startResendCooldown(retryAfter)
+    }
+    errorMessage.value = formatRegisterError(err)
+    showToast(errorMessage.value, 'error')
+  } finally {
+    loading.value = false
+    resending.value = false
   }
 }
 </script>
@@ -96,10 +178,15 @@ async function registerUser() {
           Регистрация
         </Typography>
         <Typography as="p" variant="body" class="mb-6 text-slate-600">
-          Создайте аккаунт, чтобы получить доступ к личному кабинету и сделать заказ
+          <template v-if="step === 'form'">
+            Создайте аккаунт, чтобы получить доступ к личному кабинету и сделать заказ
+          </template>
+          <template v-else>
+            Код отправлен на {{ email.trim() }}. Он действует 10 минут.
+          </template>
         </Typography>
 
-        <form @submit.prevent="registerUser" class="space-y-4">
+        <form v-if="step === 'form'" @submit.prevent="registerUser" class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Имя</label>
             <input
@@ -277,8 +364,50 @@ async function registerUser() {
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
               <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
             </svg>
-            <span>{{ loading ? 'Регистрация...' : 'Зарегистрироваться' }}</span>
+            <span>{{ loading ? 'Отправка...' : 'Получить код' }}</span>
           </Button>
+        </form>
+
+        <form v-else class="space-y-4" @submit.prevent="confirmRegistration">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1" for="sign-up-code">Код из письма</label>
+            <input
+              id="sign-up-code"
+              :value="code"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              class="w-full border border-neutral-300 rounded px-3 py-2 text-center text-lg tabular-nums tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-slate-500"
+              placeholder="______"
+              @input="onCodeInput(($event.target as HTMLInputElement).value)"
+            />
+          </div>
+
+          <div v-if="errorMessage" class="text-red-600 text-sm">
+            {{ errorMessage }}
+          </div>
+
+          <Button type="submit" variant="primary" class="w-full" :disabled="loading">
+            {{ loading && !resending ? 'Проверка...' : 'Завершить регистрацию' }}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            class="w-full"
+            :disabled="loading || resendIn > 0"
+            @click="resendCode"
+          >
+            {{ resending ? 'Отправка...' : resendIn > 0 ? `Отправить код заново через ${resendIn} с` : 'Отправить код заново' }}
+          </Button>
+          <button
+            type="button"
+            class="w-full text-sm text-slate-600 hover:text-slate-900 hover:underline"
+            :disabled="loading"
+            @click="step = 'form'; errorMessage = ''"
+          >
+            Изменить данные
+          </button>
         </form>
 
         <div class="mt-4 text-sm text-slate-600 text-center">

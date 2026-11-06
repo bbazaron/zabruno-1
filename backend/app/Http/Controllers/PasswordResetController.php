@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ForgotPasswordRequest;
 use App\Http\Requests\ResetPasswordRequest;
 use App\Http\Requests\VerifyPasswordResetCodeRequest;
+use App\Models\User;
 use App\Services\PasswordResetService;
 
 class PasswordResetController extends Controller
@@ -15,8 +16,19 @@ class PasswordResetController extends Controller
 
     public function forgot(ForgotPasswordRequest $request)
     {
+        $email = mb_strtolower(trim((string) $request->validated('email')));
+        $user = User::query()
+            ->whereRaw('LOWER(TRIM(email)) = ?', [$email])
+            ->first();
+
+        if ($user === null) {
+            return response()->json([
+                'message' => 'Аккаунт с такой почтой не найден',
+            ], 422);
+        }
+
         try {
-            $retryAfter = $this->passwordReset->requestCode($request->validated('email'));
+            $retryAfter = $this->passwordReset->requestCode($user->email);
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => $e->getMessage(),

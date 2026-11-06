@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ConfirmRegistrationRequest;
 use App\Http\Requests\LoginRequest;
+use App\Http\Requests\ResendRegistrationCodeRequest;
 use App\Http\Requests\SignUpRequest;
+use App\Services\RegistrationCodeService;
 use App\Services\UserService;
 use Illuminate\Http\Request;
 
@@ -11,13 +14,78 @@ class UserController extends Controller
 {
     public function __construct(
         private UserService $userService,
+        private RegistrationCodeService $registrationCodes,
     ) {}
 
     public function register(SignUpRequest $request)
     {
-        $result = $this->userService->register($request);
+        try {
+            $retryAfter = $this->registrationCodes->requestCode(
+                (string) $request->validated('firstName'),
+                (string) $request->validated('lastName'),
+                (string) $request->validated('email'),
+                (string) $request->validated('password'),
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
 
-        return response()->json($result['data'], $result['status']);
+        if ($retryAfter !== null) {
+            return response()->json([
+                'message' => 'Повторная отправка будет доступна через '.$retryAfter.' с',
+                'retry_after' => $retryAfter,
+            ], 429);
+        }
+
+        return response()->json([
+            'message' => 'Код отправлен на почту',
+        ]);
+    }
+
+    public function confirmRegistration(ConfirmRegistrationRequest $request)
+    {
+        try {
+            $user = $this->registrationCodes->confirm(
+                (string) $request->validated('email'),
+                (string) $request->validated('code'),
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        $token = $user->createToken('auth')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Регистрация успешна',
+            'token' => $token,
+            'user' => $user,
+        ]);
+    }
+
+    public function resendRegistrationCode(ResendRegistrationCodeRequest $request)
+    {
+        try {
+            $retryAfter = $this->registrationCodes->resend((string) $request->validated('email'));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        if ($retryAfter !== null) {
+            return response()->json([
+                'message' => 'Повторная отправка будет доступна через '.$retryAfter.' с',
+                'retry_after' => $retryAfter,
+            ], 429);
+        }
+
+        return response()->json([
+            'message' => 'Код отправлен на почту',
+        ]);
     }
 
     public function login(LoginRequest $request)

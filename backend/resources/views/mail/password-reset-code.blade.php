@@ -22,7 +22,7 @@
                         <td style="padding:32px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
                             <p style="margin:0 0 8px;font-size:20px;line-height:1.4;">Здравствуйте@if($profileName !== ''), {{ $profileName }}@endif!</p>
                             <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#475569;">Вы запросили восстановление пароля. Введите код ниже на сайте. Он действует {{ $ttlMinutes }} минут.</p>
-                            <p style="margin:0 0 24px;padding:20px 16px;background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;text-align:center;font-size:32px;line-height:1;letter-spacing:0.35em;font-weight:700;color:#0f172a;">{{ $code }}</p>
+                            @include('mail.partials.code')
                             <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Если вы не запрашивали восстановление пароля, проигнорируйте это письмо. Пароль не изменится.</p>
                         </td>
                     </tr>

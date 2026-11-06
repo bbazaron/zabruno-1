@@ -4,6 +4,7 @@ import Catalog from '../pages/Catalog.vue'
 import GenderSelect from '../pages/GenderSelect.vue'
 import ProductPage from '../pages/ProductPage.vue'
 import SignUpForm from '../pages/SignUpForm.vue'
+import EmailCode from '../pages/EmailCode.vue'
 import LoginForm from '../pages/LoginForm.vue'
 import ForgotPassword from '../pages/ForgotPassword.vue'
 import OrderCheckout from '../pages/OrderCheckout.vue'
@@ -98,6 +99,12 @@ const routes = [
         name: 'SignUpForm',
         component: SignUpForm,
         meta: { title: 'Регистрация' },
+    },
+    {
+        path: '/email-code',
+        name: 'EmailCode',
+        component: EmailCode,
+        meta: { title: 'Код из письма' },
     },
     {
         path: '/login',

@@ -16,6 +16,14 @@ class PasswordResetMailService
             throw new \InvalidArgumentException('У пользователя некорректный email');
         }
 
+        $registered = User::query()
+            ->whereKey($user->id)
+            ->whereRaw('LOWER(TRIM(email)) = ?', [mb_strtolower($email)])
+            ->exists();
+        if (! $registered) {
+            throw new \RuntimeException('Аккаунт с такой почтой не найден');
+        }
+
         try {
             Mail::to($email)->send(new PasswordResetCode($user, $code));
         } catch (\Throwable $e) {
