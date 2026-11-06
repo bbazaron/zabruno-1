@@ -21,7 +21,6 @@ class SignUpRequest extends FormRequest
             'firstName' => 'required|string|max:255',
             'lastName' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
         ];
     }
 
@@ -33,8 +32,6 @@ class SignUpRequest extends FormRequest
             'email.required' => 'Email обязателен',
             'email.email' => 'Некорректный формат email',
             'email.unique' => 'Этот email уже зарегистрирован',
-            'password.required' => 'Пароль обязателен',
-            'password.min' => 'Пароль должен быть минимум 6 символов',
         ];
     }
 }

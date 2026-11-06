@@ -19,6 +19,7 @@ use App\Http\Controllers\YooKassaController;
 use Illuminate\Support\Facades\Route;
 Route::post('/register', [UserController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/register/confirm', [UserController::class, 'confirmRegistration'])->middleware('throttle:10,1');
+Route::post('/register/complete', [UserController::class, 'completeRegistration'])->middleware('throttle:10,1');
 Route::post('/register/resend', [UserController::class, 'resendRegistrationCode'])->middleware('throttle:5,1');
 Route::post('/login', [UserController::class, 'login']);
 Route::post('/password/forgot', [PasswordResetController::class, 'forgot'])->middleware('throttle:5,1');

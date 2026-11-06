@@ -24,7 +24,7 @@ class RegistrationCodeService
      * @throws \RuntimeException
      * @throws \Throwable
      */
-    public function requestCode(string $firstName, string $lastName, string $email, string $password): ?int
+    public function requestCode(string $firstName, string $lastName, string $email): ?int
     {
         $email = $this->normalizeEmail($email);
         $name = trim($firstName.' '.$lastName);
@@ -36,7 +36,7 @@ class RegistrationCodeService
             throw new \RuntimeException('Этот email уже зарегистрирован');
         }
 
-        return $this->issue($email, $name, Hash::make($password));
+        return $this->issue($email, $name);
     }
 
     /**
@@ -50,14 +50,17 @@ class RegistrationCodeService
         }
 
         $existing = DB::table('registration_codes')->where('email', $email)->first();
-        if ($existing === null || empty($existing->name) || empty($existing->password)) {
+        if ($existing === null || empty($existing->name)) {
             throw new \RuntimeException('Сначала заполните форму регистрации');
         }
 
-        return $this->issue($email, (string) $existing->name, (string) $existing->password);
+        return $this->issue($email, (string) $existing->name);
     }
 
-    public function confirm(string $email, string $code): User
+    /**
+     * Проверяет код и возвращает одноразовый токен для установки пароля.
+     */
+    public function verify(string $email, string $code): string
     {
         $email = $this->normalizeEmail($email);
         $code = preg_replace('/\D/', '', $code) ?? '';
@@ -70,7 +73,7 @@ class RegistrationCodeService
         }
 
         $row = DB::table('registration_codes')->where('email', $email)->first();
-        if ($row === null || empty($row->token) || empty($row->created_at) || empty($row->password) || empty($row->name)) {
+        if ($row === null || empty($row->token) || empty($row->created_at) || empty($row->name)) {
             throw new \RuntimeException('Неверный или просроченный код');
         }
 
@@ -83,10 +86,41 @@ class RegistrationCodeService
             throw new \RuntimeException('Неверный или просроченный код');
         }
 
+        $completionToken = bin2hex(random_bytes(20));
+        DB::table('registration_codes')->where('email', $email)->update([
+            'token' => Hash::make($completionToken),
+            'completion_token' => Hash::make($completionToken),
+            'created_at' => now(),
+        ]);
+
+        return $completionToken;
+    }
+
+    public function complete(string $email, string $completionToken, string $password): User
+    {
+        $email = $this->normalizeEmail($email);
+        if ($this->userExists($email)) {
+            throw new \RuntimeException('Этот email уже зарегистрирован');
+        }
+
+        $row = DB::table('registration_codes')->where('email', $email)->first();
+        if ($row === null || empty($row->completion_token) || empty($row->created_at) || empty($row->name)) {
+            throw new \RuntimeException('Сначала подтвердите почту');
+        }
+
+        $createdAt = Carbon::parse((string) $row->created_at);
+        if ($createdAt->lt(now()->subMinutes(self::CODE_TTL_MINUTES))) {
+            throw new \RuntimeException('Время подтверждения истекло. Запросите код заново');
+        }
+
+        if (! Hash::check($completionToken, (string) $row->completion_token)) {
+            throw new \RuntimeException('Сначала подтвердите почту');
+        }
+
         $user = User::create([
             'name' => (string) $row->name,
             'email' => $email,
-            'password' => (string) $row->password,
+            'password' => $password,
             'role' => 'user',
         ]);
         $user->email_verified_at = now();
@@ -97,7 +131,7 @@ class RegistrationCodeService
         return $user;
     }
 
-    private function issue(string $email, string $name, string $passwordHash): ?int
+    private function issue(string $email, string $name): ?int
     {
         if ($this->userExists($email)) {
             throw new \RuntimeException('Этот email уже зарегистрирован');
@@ -116,8 +150,9 @@ class RegistrationCodeService
             ['email' => $email],
             [
                 'name' => $name,
-                'password' => $passwordHash,
+                'password' => null,
                 'token' => Hash::make($code),
+                'completion_token' => null,
                 'created_at' => now(),
             ],
         );

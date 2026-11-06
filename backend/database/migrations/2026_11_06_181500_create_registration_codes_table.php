@@ -11,8 +11,9 @@ return new class extends Migration
         Schema::create('registration_codes', function (Blueprint $table) {
             $table->string('email')->primary();
             $table->string('name');
-            $table->string('password');
+            $table->string('password')->nullable();
             $table->string('token');
+            $table->string('completion_token')->nullable();
             $table->timestamp('created_at')->nullable();
         });
     }

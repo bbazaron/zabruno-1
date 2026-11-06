@@ -21,7 +21,6 @@ class RegistrationCodeTest extends TestCase
             'firstName' => 'Анна',
             'lastName' => 'Иванова',
             'email' => 'anna@example.com',
-            'password' => 'secret1',
         ]);
 
         $response->assertOk()->assertJsonPath('message', 'Код отправлен на почту');
@@ -35,7 +34,7 @@ class RegistrationCodeTest extends TestCase
         });
     }
 
-    public function test_confirm_creates_user_that_can_log_in(): void
+    public function test_password_is_set_only_after_email_code(): void
     {
         Mail::fake();
 
@@ -43,7 +42,6 @@ class RegistrationCodeTest extends TestCase
             'firstName' => 'Анна',
             'lastName' => 'Иванова',
             'email' => 'anna@example.com',
-            'password' => 'secret1',
         ])->assertOk();
 
         $code = null;
@@ -53,9 +51,17 @@ class RegistrationCodeTest extends TestCase
             return true;
         });
 
-        $this->postJson('/api/register/confirm', [
+        $confirm = $this->postJson('/api/register/confirm', [
             'email' => 'anna@example.com',
             'code' => $code,
+        ])->assertOk()->assertJsonPath('message', 'Почта подтверждена');
+
+        $this->assertDatabaseCount('users', 0);
+
+        $this->postJson('/api/register/complete', [
+            'email' => 'anna@example.com',
+            'registration_token' => $confirm->json('registration_token'),
+            'password' => 'secret1',
         ])->assertOk()->assertJsonPath('message', 'Регистрация успешна');
 
         $user = User::query()->where('email', 'anna@example.com')->first();
@@ -79,7 +85,6 @@ class RegistrationCodeTest extends TestCase
             'firstName' => 'Анна',
             'lastName' => 'Иванова',
             'email' => 'anna@example.com',
-            'password' => 'secret1',
         ])->assertStatus(422)->assertJsonPath('message', 'Этот email уже зарегистрирован');
 
         Mail::assertNothingSent();
@@ -92,7 +97,6 @@ class RegistrationCodeTest extends TestCase
             'firstName' => 'Анна',
             'lastName' => 'Иванова',
             'email' => 'anna@example.com',
-            'password' => 'secret1',
         ])->assertOk();
 
         $this->postJson('/api/register/confirm', [

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\CompleteRegistrationRequest;
 use App\Http\Requests\ConfirmRegistrationRequest;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\ResendRegistrationCodeRequest;
@@ -24,7 +25,6 @@ class UserController extends Controller
                 (string) $request->validated('firstName'),
                 (string) $request->validated('lastName'),
                 (string) $request->validated('email'),
-                (string) $request->validated('password'),
             );
         } catch (\Throwable $e) {
             return response()->json([
@@ -47,9 +47,29 @@ class UserController extends Controller
     public function confirmRegistration(ConfirmRegistrationRequest $request)
     {
         try {
-            $user = $this->registrationCodes->confirm(
+            $registrationToken = $this->registrationCodes->verify(
                 (string) $request->validated('email'),
                 (string) $request->validated('code'),
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Почта подтверждена',
+            'registration_token' => $registrationToken,
+        ]);
+    }
+
+    public function completeRegistration(CompleteRegistrationRequest $request)
+    {
+        try {
+            $user = $this->registrationCodes->complete(
+                (string) $request->validated('email'),
+                (string) $request->validated('registration_token'),
+                (string) $request->validated('password'),
             );
         } catch (\Throwable $e) {
             return response()->json([
