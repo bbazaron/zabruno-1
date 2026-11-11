@@ -6,6 +6,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="format-detection" content="telephone=no,date=no,address=no,email=no">
     <title>Код для восстановления пароля</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f5;">
@@ -20,9 +21,9 @@
                     </tr>
                     <tr>
                         <td style="padding:32px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-                            <p style="margin:0 0 8px;font-size:20px;line-height:1.4;">Здравствуйте@if($profileName !== ''), {{ $profileName }}@endif!</p>
-                            <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#475569;">Вы запросили восстановление пароля. Введите код ниже на сайте. Он действует {{ $ttlMinutes }} минут.</p>
+                            <p style="margin:0 0 24px;font-size:20px;line-height:1.4;">Здравствуйте@if($profileName !== ''), {{ $profileName }}@endif!</p>
                             @include('mail.partials.code')
+                            <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#475569;">Вы запросили восстановление пароля. Код действует {{ $ttlMinutes }} минут.</p>
                             <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">Если вы не запрашивали восстановление пароля, проигнорируйте это письмо. Пароль не изменится.</p>
                         </td>
                     </tr>

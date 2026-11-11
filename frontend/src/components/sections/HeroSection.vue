@@ -129,30 +129,36 @@ const cards = [
               <!-- CTAs -->
               <div
                 v-if="showCustomSizeButton || showCatalogOrderButton"
-                class="flex flex-col gap-3 pt-1 sm:flex-row sm:gap-4 sm:pt-2"
+                class="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:gap-4 sm:pt-2"
               >
+                <!-- Главная кнопка -->
                 <Button
-                  v-if="showCustomSizeButton"
-                  variant="primary"
-                  size="lg"
-                  type="button"
-                  class="w-full sm:w-auto"
-                  @click="goToOrderCheckout"
+                    v-if="showCatalogOrderButton"
+                    variant="primary"
+                    size="lg"
+                    as="link"
+                    href="/catalog"
+                    class="w-full sm:w-[280px] h-[72px] sm:px-8 text-lg shadow-lg shadow-primary/20 hover:shadow-xl transition-all"
                 >
-                  Нестандартный <br>
-                  размер →
+    <span class="flex flex-col items-center justify-center leading-tight">
+      <span>Заказать школьную</span>
+      <span>форму →</span>
+    </span>
                 </Button>
+
+                <!-- Вторичная кнопка -->
                 <Button
-                  v-if="showCatalogOrderButton"
-                  variant="secondary"
-                  size="lg"
-                  as="link"
-                  href="/catalog"
-                  class="w-full sm:w-auto"
+                    v-if="showCustomSizeButton"
+                    variant="secondary"
+                    size="lg"
+                    type="button"
+                    class="w-full sm:w-[210px] h-[72px] sm:px-5 text-lg shadow-lg shadow-primary/20 hover:shadow-xl transition-all"
+                    @click="goToOrderCheckout"
                 >
-                  Заказать <br>
-                  школьную форму  →
+                  Нестандартный размер →
                 </Button>
+
+
               </div>
             </div>
 

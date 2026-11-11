@@ -3,7 +3,6 @@
 namespace App\Mail;
 
 use App\Services\RegistrationCodeService;
-use App\Support\EmailCodeCopyLink;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
@@ -27,9 +26,9 @@ class RegistrationCode extends Mailable
     {
         return new Content(
             view: 'mail.registration-code',
+            text: 'mail.registration-code-text',
             with: [
                 'ttlMinutes' => RegistrationCodeService::CODE_TTL_MINUTES,
-                'copyUrl' => EmailCodeCopyLink::url($this->code),
             ],
         );
     }

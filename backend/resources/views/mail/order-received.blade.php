@@ -14,7 +14,7 @@
 @if($isReadyToWear)
 <p>Спасибо за заказ готовых изделий. Заказ <strong>№{{ $order->id }}</strong> принят к обработке. Сумма: <strong>{{ $order->total_amount }}&nbsp;₽</strong>.</p>
 @else
-<p>Спасибо за заказ пошива на заказ. Заказ <strong>№{{ $order->id }}</strong> принят к обработке. Сумма: <strong>{{ $order->total_amount }}&nbsp;₽</strong>.</p>
+<p>Спасибо за заказ индивидуального пошива школьной формы. Заказ <strong>№{{ $order->id }}</strong> принят к обработке. Сумма: <strong>{{ $order->total_amount }}&nbsp;₽</strong>.</p>
 @endif
 
 @if($order->items->isNotEmpty())

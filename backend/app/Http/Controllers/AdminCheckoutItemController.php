@@ -8,9 +8,11 @@ use App\Models\ProductCategory;
 use App\Support\ProductSizes;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class AdminCheckoutItemController extends Controller
 {
@@ -150,6 +152,8 @@ class AdminCheckoutItemController extends Controller
             ],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:9999'],
             'is_active' => ['sometimes', 'boolean'],
+            'media' => ['sometimes', 'array', 'max:1'],
+            'media.*' => ['file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'image_file' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
     }
@@ -176,18 +180,20 @@ class AdminCheckoutItemController extends Controller
             return $product->fresh() ?? $product;
         }
 
-        $uploaded = $this->storeUploadedImage($request, 'products');
         $gender = $validated['gender'] ?? 'all';
 
-        return Product::query()->create([
+        $product = Product::query()->create([
             'name' => trim((string) $validated['name']),
             'category' => $validated['category'],
             'gender' => $gender,
             'price' => $validated['price'],
             'sizes' => ProductSizes::defaultList(),
-            'image' => $uploaded,
+            'image' => null,
             'in_stock' => true,
         ]);
+        $this->attachUploadedPhoto($product, $request);
+
+        return $product->fresh() ?? $product;
     }
 
     /**
@@ -205,13 +211,10 @@ class AdminCheckoutItemController extends Controller
         if (array_key_exists('gender', $validated) && is_string($validated['gender'])) {
             $updates['gender'] = $validated['gender'];
         }
-        $uploaded = $this->storeUploadedImage($request, 'products');
-        if ($uploaded !== null) {
-            $updates['image'] = $uploaded;
-        }
         if ($updates !== []) {
             $product->update($updates);
         }
+        $this->attachUploadedPhoto($product, $request);
     }
 
     /**
@@ -241,14 +244,54 @@ class AdminCheckoutItemController extends Controller
         ];
     }
 
-    private function storeUploadedImage(Request $request, string $directory): ?string
+    private function attachUploadedPhoto(Product $product, Request $request): void
     {
-        $file = $request->file('image_file');
+        $file = $this->uploadedPhoto($request);
         if ($file === null) {
-            return null;
+            return;
+        }
+        if (! $file->isValid()) {
+            throw ValidationException::withMessages([
+                'media' => 'Не удалось загрузить изображение. Используйте PNG, JPG или WEBP до 5 МБ.',
+            ]);
         }
 
-        return $file->store($directory, 'public');
+        $path = $file->store('products', 'public');
+        if (! is_string($path) || $path === '') {
+            throw ValidationException::withMessages([
+                'media' => 'Не удалось сохранить изображение.',
+            ]);
+        }
+
+        $product->media()->increment('sort_order');
+        $product->media()->create([
+            'path' => $path,
+            'sort_order' => 0,
+            'catalog_zoom' => 100,
+            'catalog_pan_x' => 0,
+            'catalog_pan_y' => 0,
+        ]);
+
+        $product->image = $path;
+        $product->save();
+    }
+
+    private function uploadedPhoto(Request $request): ?UploadedFile
+    {
+        $fromMedia = $request->file('media');
+        if (is_array($fromMedia)) {
+            foreach ($fromMedia as $file) {
+                if ($file instanceof UploadedFile) {
+                    return $file;
+                }
+            }
+        } elseif ($fromMedia instanceof UploadedFile) {
+            return $fromMedia;
+        }
+
+        $single = $request->file('image_file');
+
+        return $single instanceof UploadedFile ? $single : null;
     }
 
     private function deleteCheckoutOwnedImage(?string $path, ?int $productId): void

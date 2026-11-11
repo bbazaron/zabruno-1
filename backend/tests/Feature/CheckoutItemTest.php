@@ -6,6 +6,8 @@ use App\Models\CheckoutItem;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class CheckoutItemTest extends TestCase
@@ -90,6 +92,34 @@ class CheckoutItemTest extends TestCase
         $this->assertDatabaseHas('products', ['name' => 'Брюки', 'category' => 'pants']);
         $this->assertDatabaseHas('checkout_items', ['name' => 'Брюки']);
         $this->assertNotNull($create->json('item.product_id'));
+    }
+
+    public function test_admin_can_create_checkout_card_with_photo_like_catalog(): void
+    {
+        Storage::fake('public');
+        $admin = User::factory()->create(['role' => 'admin']);
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+
+        $create = $this->actingAs($admin, 'sanctum')->post('/api/admin/checkout-items', [
+            'source' => 'new',
+            'name' => 'Жилет',
+            'price' => 3500,
+            'gender' => 'boys',
+            'category' => 'vests',
+            'is_active' => '1',
+            'media' => [
+                UploadedFile::fake()->createWithContent('vest.png', $png),
+            ],
+        ], ['Accept' => 'application/json']);
+
+        $create->assertCreated();
+        $productId = $create->json('item.product_id');
+        $product = Product::query()->with('media')->findOrFail($productId);
+        $this->assertNotNull($product->image);
+        $this->assertCount(1, $product->media);
+        $this->assertSame($product->image, $product->media->first()->path);
+        $this->assertSame($product->image, $create->json('item.image'));
+        Storage::disk('public')->assertExists($product->image);
     }
 
     public function test_admin_can_reorder_checkout_items(): void

@@ -11,6 +11,7 @@ import { useToast } from '../composables/useToast'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 
 const AUTH_TOKEN_KEY = 'auth_token'
+const ACCEPTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
 interface ProductCategory {
   id: string
@@ -108,12 +109,16 @@ function productImageSrc(product: CatalogProduct | CheckoutItem): string {
 }
 
 function formatApiError(err: unknown): string {
-  const e = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }
-  const data = e.response?.data
-  if (!data) return 'Ошибка запроса'
-  if (typeof data.message === 'string') return data.message
-  if (data.errors) return Object.values(data.errors).flat().join(' ')
-  return 'Ошибка запроса'
+  const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } | string } })
+    .response?.data
+  if (data && typeof data === 'object') {
+    if (data.errors) {
+      const text = Object.values(data.errors).flat().filter(Boolean).join(' ')
+      if (text) return text
+    }
+    if (typeof data.message === 'string' && data.message.trim() !== '') return data.message
+  }
+  return 'Не удалось сохранить карточку. Для фото используйте PNG, JPG или WEBP до 5 МБ.'
 }
 
 const selectableProducts = computed(() => {
@@ -194,10 +199,14 @@ function fillForm(item: CheckoutItem) {
 function onImageChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0] ?? null
+  input.value = ''
+  if (file && !ACCEPTED_IMAGE_TYPES.has(file.type)) {
+    showToast('Можно загружать только PNG, JPG, JPEG и WEBP', 'error')
+    return
+  }
   if (formImagePreview.value) URL.revokeObjectURL(formImagePreview.value)
   formImageFile.value = file
   formImagePreview.value = file ? URL.createObjectURL(file) : ''
-  input.value = ''
 }
 
 const formTitle = computed(() =>
@@ -271,7 +280,7 @@ async function submitForm() {
     payload.append('price', String(priceNum))
     payload.append('gender', formGender.value)
     payload.append('is_active', formIsActive.value ? '1' : '0')
-    if (formImageFile.value) payload.append('image_file', formImageFile.value)
+    if (formImageFile.value) payload.append('media[]', formImageFile.value)
 
     if (editingId.value != null) {
       payload.append('_method', 'PATCH')
