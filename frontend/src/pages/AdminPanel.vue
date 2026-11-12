@@ -133,14 +133,14 @@ onMounted(() => {
           size="sm"
           @click="router.push('/admin/products')"
         >
-          Управление товарами
+          Каталог
         </Button>
         <Button
           :variant="isAdminTabActive('/admin/checkout-items') ? 'primary' : 'secondary'"
           size="sm"
           @click="router.push('/admin/checkout-items')"
         >
-          Изделия
+          Индивидуальный пошив
         </Button>
         <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами

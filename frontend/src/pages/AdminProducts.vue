@@ -821,7 +821,7 @@ onMounted(() => {
   <Header />
   <section class="relative w-full min-h-screen font-sans text-slate-900 bg-neutral-50/50">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <Typography as="h1" class="text-3xl md:text-4xl font-light">Управление товарами</Typography>
+      <Typography as="h1" class="text-3xl md:text-4xl font-light">Каталог</Typography>
 
       <div class="mt-2 mb-8 flex flex-wrap gap-3">
         <Button
@@ -836,14 +836,14 @@ onMounted(() => {
           size="sm"
           @click="router.push('/admin/products')"
         >
-          Управление товарами
+          Каталог
         </Button>
         <Button
           :variant="isAdminTabActive('/admin/checkout-items') ? 'primary' : 'secondary'"
           size="sm"
           @click="router.push('/admin/checkout-items')"
         >
-          Изделия
+          Индивидуальный пошив
         </Button>
         <Button :variant="isAdminTabActive('/admin') ? 'primary' : 'secondary'" size="sm" @click="router.push('/admin')">
           Управление администраторами

@@ -27,6 +27,7 @@ services:
       - /var/www/vendor
       # На сервере: каталог для выгруженных медиа (создайте при отсутствии или закомментируйте локально)
       - /var/www/agaforma-storage/public:/var/www/agaforma-storage/public
+      - ./backend/docker/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:ro
     depends_on:
       - db
       - rabbitmq

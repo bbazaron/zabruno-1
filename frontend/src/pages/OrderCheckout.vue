@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import Typography from '../components/ui/Typography.vue'
@@ -7,6 +8,8 @@ import Button from '../components/ui/Button.vue'
 import Header from '../components/sections/Header.vue'
 import Footer from '../components/sections/Footer.vue'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import CatalogCropViewport from '../components/catalog/CatalogCropViewport.vue'
+import { clampCatalogCrop, DEFAULT_CATALOG_CROP, type CatalogCrop } from '../utils/catalogCrop'
 import { usePickupAddress } from '../composables/usePickupAddress'
 
 const AUTH_TOKEN_KEY = 'auth_token'
@@ -125,14 +128,19 @@ const hipsCm = ref('')
 const figureComment = ref('')
 
 // Шаг 3
+type CheckoutMedia = CatalogCrop & { url: string }
 type CheckoutCard = {
   id: number
   name: string
+  description: string
   price: number
   image: string | null
+  media: CheckoutMedia[]
 }
 const checkoutCards = ref<CheckoutCard[]>([])
 const checkoutQtyById = ref<Record<number, number>>({})
+const checkoutMediaIndexById = ref<Record<number, number>>({})
+const detailCardId = ref<number | null>(null)
 const checkoutCardsLoading = ref(false)
 const checkoutCardsError = ref('')
 const kitComment = ref('')
@@ -157,6 +165,55 @@ function adjustCheckoutQty(id: number, delta: number) {
   setCheckoutQty(id, checkoutQty(id) + delta)
 }
 
+function normalizeCheckoutMedia(raw: unknown, fallbackImage: string | null): CheckoutMedia[] {
+  const rows = Array.isArray(raw) ? raw : []
+  const items = rows
+    .map((entry): CheckoutMedia | null => {
+      if (!entry || typeof entry !== 'object') return null
+      const row = entry as { url?: unknown; catalog_zoom?: unknown; catalog_pan_x?: unknown; catalog_pan_y?: unknown }
+      const url = resolveBackendMediaUrl(typeof row.url === 'string' ? row.url : '')
+      if (!url) return null
+      return {
+        url,
+        ...clampCatalogCrop({
+          catalog_zoom: Number(row.catalog_zoom),
+          catalog_pan_x: Number(row.catalog_pan_x),
+          catalog_pan_y: Number(row.catalog_pan_y),
+        }),
+      }
+    })
+    .filter((item): item is CheckoutMedia => item != null)
+  if (items.length > 0) return items
+  const fallback = resolveBackendMediaUrl(fallbackImage ?? '')
+  if (!fallback) return []
+  return [{ url: fallback, ...DEFAULT_CATALOG_CROP }]
+}
+
+function cardMedia(card: CheckoutCard): CheckoutMedia[] {
+  return card.media
+}
+
+function currentCardMediaIndex(card: CheckoutCard): number {
+  const maxIndex = Math.max(0, cardMedia(card).length - 1)
+  return Math.min(checkoutMediaIndexById.value[card.id] ?? 0, maxIndex)
+}
+
+function changeCardMedia(card: CheckoutCard, stepDelta: number) {
+  const media = cardMedia(card)
+  if (media.length <= 1) return
+  const current = currentCardMediaIndex(card)
+  const next = (current + stepDelta + media.length) % media.length
+  checkoutMediaIndexById.value = { ...checkoutMediaIndexById.value, [card.id]: next }
+}
+
+const detailCard = computed(() =>
+  checkoutCards.value.find((card) => card.id === detailCardId.value) ?? null,
+)
+
+watch(step, () => {
+  detailCardId.value = null
+})
+
 async function loadCheckoutCards() {
   if (childGender.value !== 'boy' && childGender.value !== 'girl') {
     checkoutCards.value = []
@@ -178,11 +235,14 @@ async function loadCheckoutCards() {
         const id = typeof rawId === 'number' ? rawId : Number(rawId)
         const name = typeof item.name === 'string' ? item.name.trim() : ''
         const image = typeof item.image === 'string' && item.image.trim() ? item.image : null
+        const description = typeof item.description === 'string' ? item.description.trim() : ''
         return {
           id,
           name,
+          description,
           price: parseCheckoutPrice(item.price),
           image,
+          media: normalizeCheckoutMedia(item.media, image),
         } satisfies CheckoutCard
       })
       .filter((item) => Number.isFinite(item.id) && item.id > 0 && Boolean(item.name))
@@ -1124,25 +1184,65 @@ const summaryLines = computed(() => {
                 :key="card.id"
                 class="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
               >
-                <img
-                  v-if="card.image"
-                  :src="resolveBackendMediaUrl(card.image)"
-                  :alt="card.name"
-                  class="h-44 w-full object-cover bg-neutral-100"
-                />
-                <div
-                  v-else
-                  class="flex h-44 w-full items-center justify-center border-b border-dashed border-neutral-200 bg-neutral-100 text-sm text-slate-500"
-                >
-                  фото
+                <div class="relative h-44 overflow-hidden bg-neutral-100">
+                  <div
+                    v-if="cardMedia(card).length"
+                    class="flex h-full transition-transform duration-500 ease-out"
+                    :style="{ transform: `translateX(-${currentCardMediaIndex(card) * 100}%)` }"
+                  >
+                    <CatalogCropViewport
+                      v-for="(mediaItem, mediaIdx) in cardMedia(card)"
+                      :key="`${card.id}-${mediaIdx}-${mediaItem.url}`"
+                      :src="mediaItem.url"
+                      :crop="mediaItem"
+                      class="h-full w-full min-w-full"
+                    />
+                  </div>
+                  <div
+                    v-else
+                    class="flex h-full w-full items-center justify-center border-b border-dashed border-neutral-200 text-sm text-slate-500"
+                  >
+                    фото
+                  </div>
+                  <button
+                    v-if="cardMedia(card).length > 1"
+                    type="button"
+                    class="absolute left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
+                    aria-label="Предыдущее изображение"
+                    @click="changeCardMedia(card, -1)"
+                  >
+                    <ChevronLeft :size="18" />
+                  </button>
+                  <button
+                    v-if="cardMedia(card).length > 1"
+                    type="button"
+                    class="absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
+                    aria-label="Следующее изображение"
+                    @click="changeCardMedia(card, 1)"
+                  >
+                    <ChevronRight :size="18" />
+                  </button>
                 </div>
                 <div class="p-3 space-y-3">
                   <div>
                     <p class="text-sm font-semibold text-slate-900 leading-snug">{{ card.name }}</p>
+                    <p
+                      v-if="card.description"
+                      class="mt-1 text-sm text-slate-600 leading-snug line-clamp-3 whitespace-pre-line"
+                    >
+                      {{ card.description }}
+                    </p>
                     <p class="mt-1 text-sm font-medium text-slate-800 tabular-nums">
                       Цена: {{ formatOrderTotalRub(card.price) }}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    class="text-sm font-medium text-slate-900 underline underline-offset-2"
+                    @click="detailCardId = card.id"
+                  >
+                    Подробнее
+                  </button>
                   <div>
                     <span class="block text-xs font-medium text-slate-600 mb-1.5">Количество</span>
                     <div
@@ -1172,6 +1272,92 @@ const summaryLines = computed(() => {
                       </button>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+            <div
+              v-if="detailCard"
+              class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+              role="presentation"
+              @click.self="detailCardId = null"
+            >
+              <div
+                class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-4 shadow-xl"
+                role="dialog"
+                aria-modal="true"
+                :aria-label="detailCard.name"
+              >
+                <div class="relative h-72 overflow-hidden rounded-lg bg-neutral-100">
+                  <div
+                    v-if="cardMedia(detailCard).length"
+                    class="flex h-full transition-transform duration-500 ease-out"
+                    :style="{ transform: `translateX(-${currentCardMediaIndex(detailCard) * 100}%)` }"
+                  >
+                    <CatalogCropViewport
+                      v-for="(mediaItem, mediaIdx) in cardMedia(detailCard)"
+                      :key="`detail-${detailCard.id}-${mediaIdx}-${mediaItem.url}`"
+                      :src="mediaItem.url"
+                      :crop="mediaItem"
+                      class="h-full w-full min-w-full"
+                    />
+                  </div>
+                  <div v-else class="flex h-full items-center justify-center text-sm text-slate-500">фото</div>
+                  <button
+                    v-if="cardMedia(detailCard).length > 1"
+                    type="button"
+                    class="absolute left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
+                    aria-label="Предыдущее изображение"
+                    @click="changeCardMedia(detailCard, -1)"
+                  >
+                    <ChevronLeft :size="18" />
+                  </button>
+                  <button
+                    v-if="cardMedia(detailCard).length > 1"
+                    type="button"
+                    class="absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/45 text-white hover:bg-black/65"
+                    aria-label="Следующее изображение"
+                    @click="changeCardMedia(detailCard, 1)"
+                  >
+                    <ChevronRight :size="18" />
+                  </button>
+                </div>
+                <p class="mt-4 text-base font-semibold text-slate-900">{{ detailCard.name }}</p>
+                <p class="mt-1 text-sm font-medium text-slate-800 tabular-nums">
+                  Цена: {{ formatOrderTotalRub(detailCard.price) }}
+                </p>
+                <p
+                  v-if="detailCard.description"
+                  class="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-700"
+                >
+                  {{ detailCard.description }}
+                </p>
+                <div class="mt-4">
+                  <span class="mb-1.5 block text-xs font-medium text-slate-600">Количество</span>
+                  <div class="flex h-8 w-full max-w-[10.5rem] items-stretch overflow-hidden rounded border border-neutral-200 bg-white">
+                    <button
+                      type="button"
+                      class="flex min-w-0 flex-1 items-center justify-center bg-neutral-50 text-lg font-bold text-slate-700 hover:bg-neutral-100 disabled:text-slate-400"
+                      :disabled="checkoutQty(detailCard.id) <= 0"
+                      aria-label="Уменьшить количество"
+                      @click="adjustCheckoutQty(detailCard.id, -1)"
+                    >
+                      −
+                    </button>
+                    <span class="flex min-w-0 flex-1 items-center justify-center text-base font-bold tabular-nums text-slate-900">
+                      {{ checkoutQty(detailCard.id) }}
+                    </span>
+                    <button
+                      type="button"
+                      class="flex min-w-0 flex-1 items-center justify-center bg-neutral-50 text-lg font-bold text-slate-700 hover:bg-neutral-100"
+                      aria-label="Увеличить количество"
+                      @click="adjustCheckoutQty(detailCard.id, 1)"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div class="mt-4 flex justify-end">
+                  <Button type="button" variant="secondary" size="sm" @click="detailCardId = null">Закрыть</Button>
                 </div>
               </div>
             </div>

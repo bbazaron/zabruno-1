@@ -3,14 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class CheckoutItem extends Model
 {
     protected $fillable = [
-        'product_id',
         'name',
         'price',
+        'description',
         'image',
         'gender',
         'sort_order',
@@ -23,37 +23,23 @@ class CheckoutItem extends Model
         'is_active' => 'boolean',
     ];
 
-    public function product(): BelongsTo
+    public function media(): HasMany
     {
-        return $this->belongsTo(Product::class);
+        return $this->hasMany(CheckoutItemMedia::class)->orderBy('sort_order')->orderBy('id');
     }
 
     public function resolvedName(): string
     {
-        $fromProduct = trim((string) ($this->product?->name ?? ''));
-        if ($fromProduct !== '') {
-            return $fromProduct;
-        }
-
         return trim((string) $this->name);
     }
 
     public function resolvedPrice(): string
     {
-        if ($this->product !== null && $this->product->price !== null) {
-            return number_format((float) $this->product->price, 2, '.', '');
-        }
-
         return number_format((float) $this->price, 2, '.', '');
     }
 
     public function resolvedGender(): string
     {
-        $fromProduct = trim((string) ($this->product?->gender ?? ''));
-        if (in_array($fromProduct, ['boys', 'girls', 'all'], true)) {
-            return $fromProduct;
-        }
-
         $own = trim((string) $this->gender);
 
         return in_array($own, ['boys', 'girls', 'all'], true) ? $own : 'all';
@@ -61,19 +47,53 @@ class CheckoutItem extends Model
 
     public function resolvedImageUrl(): ?string
     {
-        if ($this->product !== null) {
-            $fromProduct = $this->toPublicMediaUrl($this->product->image);
-            if ($fromProduct !== null) {
-                return $fromProduct;
+        $this->loadMissing('media');
+        $first = $this->media->first();
+        if ($first !== null) {
+            $fromMedia = $this->toPublicMediaUrl($first->path);
+            if ($fromMedia !== null) {
+                return $fromMedia;
             }
         }
 
         return $this->toPublicMediaUrl($this->image);
     }
 
-    public function publicImageUrl(): ?string
+    /**
+     * @return list<array{url: string, catalog_zoom: int, catalog_pan_x: int, catalog_pan_y: int}>
+     */
+    public function publicMedia(): array
     {
-        return $this->resolvedImageUrl();
+        $this->loadMissing('media');
+        $items = [];
+        foreach ($this->media as $media) {
+            $url = $this->toPublicMediaUrl($media->path);
+            if ($url === null) {
+                continue;
+            }
+            $items[] = [
+                'url' => $url,
+                'catalog_zoom' => $this->clampZoom($media->catalog_zoom),
+                'catalog_pan_x' => $this->clampPan($media->catalog_pan_x),
+                'catalog_pan_y' => $this->clampPan($media->catalog_pan_y),
+            ];
+        }
+
+        if ($items !== []) {
+            return $items;
+        }
+
+        $fallback = $this->toPublicMediaUrl($this->image);
+        if ($fallback === null) {
+            return [];
+        }
+
+        return [[
+            'url' => $fallback,
+            'catalog_zoom' => 100,
+            'catalog_pan_x' => 0,
+            'catalog_pan_y' => 0,
+        ]];
     }
 
     public function toPublicMediaUrl(?string $path): ?string
@@ -93,5 +113,31 @@ class CheckoutItem extends Model
         }
 
         return '/storage/'.ltrim($path, '/');
+    }
+
+    private function clampZoom(mixed $value): int
+    {
+        $zoom = (int) $value;
+        if ($zoom < 100) {
+            return 100;
+        }
+        if ($zoom > 250) {
+            return 250;
+        }
+
+        return $zoom;
+    }
+
+    private function clampPan(mixed $value): int
+    {
+        $pan = (int) $value;
+        if ($pan < -100) {
+            return -100;
+        }
+        if ($pan > 100) {
+            return 100;
+        }
+
+        return $pan;
     }
 }

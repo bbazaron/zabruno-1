@@ -344,7 +344,7 @@ class OrderService
     }
 
     /**
-     * Сумма заказа и строки: цена из карточки изделия (checkout_items), иначе из каталога products.
+     * Сумма заказа и строки: цена карточки индивидуального пошива, иначе из каталога products.
      * При заданном $productGender (boys/girls) выбирается товар с тем же полом
      * Позиции без совпадения дают line_total 0.
      *
@@ -365,7 +365,6 @@ class OrderService
             $rowGender = ProductGender::toProductGender($row['selected_gender'] ?? null) ?? $productGender;
             $checkoutItem = $this->resolveCheckoutItem($row, $name, $rowGender);
             if ($checkoutItem !== null) {
-                $checkoutItem->loadMissing('product');
                 $unit = (float) $checkoutItem->resolvedPrice();
                 $lineTotal = $unit * $qty;
                 $sum += $lineTotal;
@@ -442,7 +441,7 @@ class OrderService
     {
         $id = isset($row['checkout_item_id']) ? (int) $row['checkout_item_id'] : 0;
         if ($id > 0) {
-            $byId = CheckoutItem::query()->with('product')->find($id);
+            $byId = CheckoutItem::query()->find($id);
             if ($byId !== null) {
                 return $byId;
             }
@@ -451,7 +450,7 @@ class OrderService
             return null;
         }
 
-        $query = CheckoutItem::query()->with('product')->where('name', $name);
+        $query = CheckoutItem::query()->where('name', $name);
         if ($productGender !== null && $productGender !== '') {
             $candidates = $query
                 ->where(function ($genderQuery) use ($productGender): void {

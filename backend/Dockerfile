@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y \
 # Устанавливаем Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
+# Иначе PHP режет загрузку фото: upload_max_filesize=2M, post_max_size=8M
+COPY docker/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # Работаем от root, чтобы создать рабочую директорию
 WORKDIR /var/www
 RUN mkdir -p /var/www && chown -R ${UID}:${GID} /var/www

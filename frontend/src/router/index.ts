@@ -193,7 +193,7 @@ const routes = [
         name: 'AdminProducts',
         component: AdminProducts,
         meta: {
-            title: 'Управление товарами',
+            title: 'Каталог',
             requiresAuth: true,
             requiresAdmin: true,
         },
@@ -203,7 +203,7 @@ const routes = [
         name: 'AdminCheckoutItems',
         component: AdminCheckoutItems,
         meta: {
-            title: 'Изделия',
+            title: 'Индивидуальный пошив',
             requiresAuth: true,
             requiresAdmin: true,
         },

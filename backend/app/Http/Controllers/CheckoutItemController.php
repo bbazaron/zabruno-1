@@ -13,7 +13,7 @@ class CheckoutItemController extends Controller
         $gender = $this->normalizeGender($request->query('gender'));
 
         $items = CheckoutItem::query()
-            ->with('product')
+            ->with('media')
             ->where('is_active', true)
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -29,10 +29,11 @@ class CheckoutItemController extends Controller
             ->values()
             ->map(fn (CheckoutItem $item): array => [
                 'id' => $item->id,
-                'product_id' => $item->product_id,
                 'name' => $item->resolvedName(),
+                'description' => $item->description,
                 'price' => $item->resolvedPrice(),
                 'image' => $item->resolvedImageUrl(),
+                'media' => $item->publicMedia(),
                 'gender' => $item->resolvedGender(),
                 'sort_order' => $item->sort_order,
             ]);
