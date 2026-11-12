@@ -5,6 +5,8 @@ use App\Http\Controllers\AdminHomeOrderButtonsSettingController;
 use App\Http\Controllers\AdminPickupSettingController;
 use App\Http\Controllers\AdminProductCategoryController;
 use App\Http\Controllers\AdminSchoolColorSettingController;
+use App\Http\Controllers\AdminSchoolController;
+use App\Http\Controllers\SchoolController;
 use App\Http\Controllers\AdminProductController;
 use App\Http\Controllers\CheckoutItemController;
 use App\Http\Controllers\ProductCategoryController;
@@ -54,6 +56,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/admin/settings/pickup-address', [AdminPickupSettingController::class, 'update']);
         Route::get('/admin/settings/default-school-colors', [AdminSchoolColorSettingController::class, 'show']);
         Route::patch('/admin/settings/default-school-colors', [AdminSchoolColorSettingController::class, 'update']);
+        Route::get('/admin/schools', [AdminSchoolController::class, 'index']);
+        Route::post('/admin/schools', [AdminSchoolController::class, 'store']);
+        Route::patch('/admin/schools/{id}', [AdminSchoolController::class, 'update']);
+        Route::delete('/admin/schools/{id}', [AdminSchoolController::class, 'destroy']);
 
         Route::get('/admin/product-categories', [AdminProductCategoryController::class, 'index']);
         Route::post('/admin/product-categories', [AdminProductCategoryController::class, 'store']);
@@ -77,6 +83,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 Route::post('/yookassa/webhook', [YooKassaController::class, 'handle'])->middleware('throttle:30,1');
 
+Route::get('/schools', [SchoolController::class, 'index']);
 Route::get('/product-categories', [ProductCategoryController::class, 'index']);
 Route::get('/checkout-items', [CheckoutItemController::class, 'index']);
 Route::get('/index', [ProductController::class, 'index']);

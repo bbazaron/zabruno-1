@@ -40,6 +40,10 @@ const activeMediaIndex = ref(0)
 const selectedSize = ref('')
 const schoolColorChoice = ref('')
 const customSchoolColor = ref('')
+const schools = ref<Array<{ id: number; city: string; name: string }>>([])
+const schoolChoice = ref('')
+const customCity = ref('')
+const customSchoolName = ref('')
 const selectedClassNumber = ref('')
 const selectedClassLetter = ref('')
 const selectedItemGender = ref<SelectedItemGender>('boy')
@@ -61,6 +65,42 @@ const selectClass =
   'w-full max-w-md px-3 py-2 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-900'
 
 const schoolColorOptions = computed(() => parseSchoolColorOptions(product.value?.color))
+
+const schoolsByCity = computed(() => {
+  const map = new Map<string, Array<{ id: number; city: string; name: string }>>()
+  for (const school of schools.value) {
+    const city = school.city.trim()
+    if (!city) continue
+    const list = map.get(city) ?? []
+    list.push(school)
+    map.set(city, list)
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], 'ru'))
+    .map(([city, list]) => ({
+      city,
+      schools: [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    }))
+})
+
+const schoolsWithoutCity = computed(() =>
+  schools.value
+    .filter((school) => !school.city.trim())
+    .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+)
+
+const selectedSchool = computed(() => {
+  const id = Number(schoolChoice.value)
+  if (!Number.isFinite(id) || id <= 0) return null
+  return schools.value.find((school) => school.id === id) ?? null
+})
+
+const schoolIsCustom = computed(() => schools.value.length === 0 || schoolChoice.value === 'other')
+
+const schoolNeedsCity = computed(() => {
+  if (schoolIsCustom.value) return true
+  return selectedSchool.value != null && !selectedSchool.value.city.trim()
+})
 
 const productRequiresGenderChoice = computed(() =>
   productGenderRequiresChoice(product.value?.gender),
@@ -147,7 +187,23 @@ async function fetchProduct() {
   }
 }
 
-onMounted(fetchProduct)
+async function fetchSchools() {
+  try {
+    const response = await axios.get<{ schools?: Array<{ id: number; city: string; name: string }> }>(
+      '/api/schools',
+      { headers: { Accept: 'application/json' } },
+    )
+    schools.value = Array.isArray(response.data?.schools) ? response.data.schools : []
+  } catch (err) {
+    console.error(err)
+    schools.value = []
+  }
+}
+
+onMounted(() => {
+  void fetchSchools()
+  void fetchProduct()
+})
 
 function selectMedia(url: string) {
   selectedMedia.value = resolveBackendMediaUrl(url)
@@ -203,8 +259,41 @@ function cartVariantKey(
   color: string,
   classLabel: string,
   gender: SelectedItemGender,
+  schoolKey: string,
 ): string {
-  return `${size}|${color.trim().toLowerCase()}|${classLabel.trim().toUpperCase()}|${gender}`
+  return `${size}|${color.trim().toLowerCase()}|${classLabel.trim().toUpperCase()}|${gender}|${schoolKey}`
+}
+
+function rowSchoolKey(row: {
+  school_id?: number | null
+  school_city?: string | null
+  school_name?: string | null
+}): string {
+  const schoolId = Number(row.school_id ?? 0)
+  if (schoolId > 0) return `id:${schoolId}`
+  const city = String(row.school_city ?? '').trim().toLowerCase()
+  const name = String(row.school_name ?? '').trim().toLowerCase()
+  return `custom:${city}|${name}`
+}
+
+function syncSchoolFromCartRow(row: {
+  school_id?: number | null
+  school_city?: string | null
+  school_name?: string | null
+}) {
+  const schoolId = Number(row.school_id ?? 0)
+  if (schoolId > 0 && schools.value.some((school) => school.id === schoolId)) {
+    schoolChoice.value = String(schoolId)
+    customCity.value = ''
+    customSchoolName.value = ''
+    return
+  }
+  const city = String(row.school_city ?? '').trim()
+  const name = String(row.school_name ?? '').trim()
+  if (!city && !name) return
+  schoolChoice.value = 'other'
+  customCity.value = city
+  customSchoolName.value = name
 }
 
 function selectedClassLabel(): string {
@@ -246,10 +335,14 @@ async function loadCartState() {
       const quantity = Number(row?.quantity ?? 0)
       if (!isProductSizeAllowed(size, availableSizes.value)) continue
 
-      nextState[cartVariantKey(size, color, classLabel, gender)] = quantity > 0 ? quantity : 1
+      nextState[cartVariantKey(size, color, classLabel, gender, rowSchoolKey(row))] =
+        quantity > 0 ? quantity : 1
 
       if (quantity > 0 && color) {
         syncSchoolColorFromCartValue(color)
+      }
+      if (quantity > 0) {
+        syncSchoolFromCartRow(row)
       }
       if (quantity > 0 && productRequiresGenderChoice.value) {
         selectedItemGender.value = gender
@@ -282,18 +375,32 @@ async function addToCartAction() {
       ? defaultSelectedSize(availableSizes.value, selectedSize.value)
       : null
 
+  if (schools.value.length > 0 && !schoolChoice.value) {
+    showToast('Выберите школу', 'error')
+    return
+  }
+  if (schoolIsCustom.value && !customSchoolName.value.trim()) {
+    showToast('Укажите школу', 'error')
+    return
+  }
+  if (schoolNeedsCity.value && !customCity.value.trim()) {
+    showToast('Укажите город', 'error')
+    return
+  }
+
   if (schoolColorOptions.value.length > 0) {
     if (!schoolColorChoice.value) {
-      showToast('Выберите школу и цвет', 'error')
+      showToast('Выберите цвет', 'error')
       return
     }
     if (schoolColorChoice.value === SCHOOL_COLOR_OTHER_VALUE && !customSchoolColor.value.trim()) {
-      showToast('Укажите школу и цвет в поле «Другое»', 'error')
+      showToast('Укажите цвет', 'error')
       return
     }
   }
 
-  const colorToSend = effectiveSchoolColor.value || schoolColorOptions.value[0] || null
+  const colorToSend =
+    schoolColorOptions.value.length > 0 ? effectiveSchoolColor.value || null : null
   const genderToSend = fixedProductGender.value ?? selectedItemGender.value
 
   if (productRequiresGenderChoice.value && !genderToSend) {
@@ -317,6 +424,9 @@ async function addToCartAction() {
         selected_color: colorToSend,
         selected_class: selectedClassLabel() || null,
         selected_gender: genderToSend,
+        school_id: schoolIsCustom.value ? null : Number(schoolChoice.value),
+        school_city: schoolNeedsCity.value ? customCity.value.trim() : null,
+        school_name: schoolIsCustom.value ? customSchoolName.value.trim() : null,
       },
       {
         headers: {
@@ -405,25 +515,71 @@ async function addToCartAction() {
               </button>
             </div>
           </div>
+          <div class="w-full max-w-md space-y-2">
+            <label v-if="schools.length > 0" for="product-school" class="block text-sm font-medium text-slate-700">
+              Школа
+            </label>
+            <select
+              v-if="schools.length > 0"
+              id="product-school"
+              v-model="schoolChoice"
+              :class="selectClass"
+            >
+              <option value="" disabled>Выберите школу</option>
+              <optgroup v-for="group in schoolsByCity" :key="group.city" :label="group.city">
+                <option v-for="school in group.schools" :key="school.id" :value="String(school.id)">
+                  {{ school.name }}
+                </option>
+              </optgroup>
+              <optgroup v-if="schoolsWithoutCity.length > 0" label="Город нужно указать">
+                <option v-for="school in schoolsWithoutCity" :key="school.id" :value="String(school.id)">
+                  {{ school.name }}
+                </option>
+              </optgroup>
+              <option value="other">Другая школа</option>
+            </select>
+            <div v-if="schoolNeedsCity" class="space-y-2">
+              <label for="product-school-city" class="block text-sm font-medium text-slate-700">Город</label>
+              <input
+                id="product-school-city"
+                v-model="customCity"
+                type="text"
+                :class="selectClass"
+                placeholder="Например: Казань"
+                maxlength="255"
+              />
+              <template v-if="schoolIsCustom">
+                <label for="product-school-name" class="block text-sm font-medium text-slate-700">Школа</label>
+                <input
+                  id="product-school-name"
+                  v-model="customSchoolName"
+                  type="text"
+                  :class="selectClass"
+                  placeholder="Например: Школа №15"
+                  maxlength="255"
+                />
+              </template>
+            </div>
+          </div>
           <div v-if="schoolColorOptions.length > 0" class="w-full max-w-md space-y-2">
             <label for="product-school-color" class="block text-sm font-medium text-slate-700">
-              Школа / цвет
+              Цвет
             </label>
             <select id="product-school-color" v-model="schoolColorChoice" :class="selectClass">
-              <option value="" disabled>Выберите школу и цвет</option>
+              <option value="" disabled>Выберите цвет</option>
               <option v-for="option in schoolColorOptions" :key="option" :value="option">
                 {{ option }}
               </option>
               <option :value="SCHOOL_COLOR_OTHER_VALUE">{{ SCHOOL_COLOR_OTHER_LABEL }}</option>
             </select>
             <div v-if="schoolColorChoice === SCHOOL_COLOR_OTHER_VALUE">
-              <label for="product-school-color-custom" class="sr-only">Укажите школу и цвет</label>
+              <label for="product-school-color-custom" class="sr-only">Укажите цвет</label>
               <input
                 id="product-school-color-custom"
                 v-model="customSchoolColor"
                 type="text"
                 :class="selectClass"
-                placeholder="Например: Школа №15, синий"
+                placeholder="Например: синий"
                 maxlength="255"
               />
             </div>

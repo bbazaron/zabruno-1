@@ -17,6 +17,9 @@ class OrderItem extends Model
         'selected_color',
         'selected_class',
         'selected_gender',
+        'school_id',
+        'school_city',
+        'school_name',
         'line_comment',
     ];
 

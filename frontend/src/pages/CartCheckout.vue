@@ -8,12 +8,15 @@ import Button from '../components/ui/Button.vue'
 import { useToast } from '../composables/useToast'
 import { usePickupAddress } from '../composables/usePickupAddress'
 import { resolveCartItemGenderLabel } from '../utils/productGender'
+import { formatLineSchoolMeta } from '../utils/lineSchool'
 
 interface CartItem {
   id: number
   quantity: number
   selected_size?: string | null
   selected_color?: string | null
+  school_city?: string | null
+  school_name?: string | null
   selected_class?: string | null
   selected_gender?: string | null
   product: {
@@ -389,7 +392,7 @@ onMounted(() => {
                 >
                   · {{ resolveCartItemGenderLabel(item.selected_gender, item.product?.gender) }}
                 </span>
-                <span v-if="item.selected_color" class="text-slate-500"> · {{ item.selected_color }}</span>
+                <span v-if="formatLineSchoolMeta(item)" class="text-slate-500"> · {{ formatLineSchoolMeta(item) }}</span>
                 <span v-if="item.selected_class" class="text-slate-500"> · {{ item.selected_class }}</span>
               </span>
               <span class="text-slate-900">

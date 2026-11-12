@@ -41,6 +41,9 @@ class CartController extends Controller
             'selected_color' => ['nullable', 'string', 'max:255'],
             'selected_class' => ['nullable', 'string', 'max:32'],
             'selected_gender' => ['nullable', 'string', 'in:boy,girl,boys,girls'],
+            'school_id' => ['nullable', 'integer', 'exists:schools,id'],
+            'school_city' => ['nullable', 'string', 'max:255'],
+            'school_name' => ['nullable', 'string', 'max:255'],
         ]);
 
         try {
@@ -52,6 +55,9 @@ class CartController extends Controller
                 isset($validated['selected_color']) ? (string) $validated['selected_color'] : null,
                 isset($validated['selected_class']) ? (string) $validated['selected_class'] : null,
                 isset($validated['selected_gender']) ? (string) $validated['selected_gender'] : null,
+                isset($validated['school_id']) ? (int) $validated['school_id'] : null,
+                isset($validated['school_city']) ? (string) $validated['school_city'] : null,
+                isset($validated['school_name']) ? (string) $validated['school_name'] : null,
             );
         } catch (\RuntimeException $e) {
             return response()->json([

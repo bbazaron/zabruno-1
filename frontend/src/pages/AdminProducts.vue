@@ -89,6 +89,14 @@ const pickupAddressDraft = ref('')
 const pickupAddressSaving = ref(false)
 const pickupAddressLoading = ref(false)
 const showDefaultSchoolColorsPanel = ref(false)
+const showSchoolsPanel = ref(false)
+const schools = ref<Array<{ id: number; city: string; name: string }>>([])
+const schoolCityDraft = ref('')
+const schoolNameDraft = ref('')
+const savingSchool = ref(false)
+const editingSchoolId = ref<number | null>(null)
+const editingSchoolCity = ref('')
+const editingSchoolName = ref('')
 const showCategoriesPanel = ref(false)
 const showProductFormPanel = ref(false)
 const categories = ref<ProductCategory[]>([])
@@ -473,7 +481,7 @@ async function saveDefaultSchoolColors() {
     )
     defaultColorRenames.value = []
     cancelEditDefaultColor()
-    showToast('Общий список школ и цветов сохранён', 'success')
+    showToast('Список цветов сохранён', 'success')
     await loadProducts()
   } catch (err) {
     showToast(formatApiError(err), 'error')
@@ -809,9 +817,103 @@ const pickupAddressSubtitle = computed(() => {
   return preview || 'Нажмите, чтобы указать адрес'
 })
 
+async function loadSchools() {
+  try {
+    const res = await axios.get<{ schools?: Array<{ id: number; city: string; name: string }> }>(
+      '/api/admin/schools',
+      { headers: getAuthHeaders() },
+    )
+    schools.value = Array.isArray(res.data?.schools) ? res.data.schools : []
+  } catch {
+    schools.value = []
+  }
+}
+
+async function createSchool() {
+  const city = schoolCityDraft.value.trim()
+  const name = schoolNameDraft.value.trim()
+  if (!city || !name) {
+    showToast('Укажите город и название школы', 'error')
+    return
+  }
+  savingSchool.value = true
+  try {
+    const res = await axios.post<{ schools?: Array<{ id: number; city: string; name: string }> }>(
+      '/api/admin/schools',
+      { city, name },
+      { headers: getAuthHeaders() },
+    )
+    schools.value = Array.isArray(res.data?.schools) ? res.data.schools : schools.value
+    schoolCityDraft.value = ''
+    schoolNameDraft.value = ''
+    showToast('Школа добавлена', 'success')
+  } catch (err) {
+    showToast(formatApiError(err), 'error')
+  } finally {
+    savingSchool.value = false
+  }
+}
+
+function startEditSchool(school: { id: number; city: string; name: string }) {
+  editingSchoolId.value = school.id
+  editingSchoolCity.value = school.city
+  editingSchoolName.value = school.name
+}
+
+function cancelEditSchool() {
+  editingSchoolId.value = null
+  editingSchoolCity.value = ''
+  editingSchoolName.value = ''
+}
+
+async function saveSchoolEdit() {
+  const id = editingSchoolId.value
+  if (id == null) return
+  const city = editingSchoolCity.value.trim()
+  const name = editingSchoolName.value.trim()
+  if (!city || !name) {
+    showToast('Укажите город и название школы', 'error')
+    return
+  }
+  savingSchool.value = true
+  try {
+    const res = await axios.patch<{ schools?: Array<{ id: number; city: string; name: string }> }>(
+      `/api/admin/schools/${id}`,
+      { city, name },
+      { headers: getAuthHeaders() },
+    )
+    schools.value = Array.isArray(res.data?.schools) ? res.data.schools : schools.value
+    cancelEditSchool()
+    showToast('Школа обновлена', 'success')
+  } catch (err) {
+    showToast(formatApiError(err), 'error')
+  } finally {
+    savingSchool.value = false
+  }
+}
+
+async function removeSchool(school: { id: number; name: string }) {
+  if (!confirm(`Удалить школу «${school.name}» из справочника?`)) return
+  savingSchool.value = true
+  try {
+    const res = await axios.delete<{ schools?: Array<{ id: number; city: string; name: string }> }>(
+      `/api/admin/schools/${school.id}`,
+      { headers: getAuthHeaders() },
+    )
+    schools.value = Array.isArray(res.data?.schools) ? res.data.schools : schools.value
+    if (editingSchoolId.value === school.id) cancelEditSchool()
+    showToast('Школа удалена', 'success')
+  } catch (err) {
+    showToast(formatApiError(err), 'error')
+  } finally {
+    savingSchool.value = false
+  }
+}
+
 onMounted(() => {
   resetForm()
   void loadProducts()
+  void loadSchools()
   void loadPickupAddressSetting()
   void loadHomeOrderButtonsSetting()
 })
@@ -979,6 +1081,99 @@ onMounted(() => {
         <button
           type="button"
           class="flex w-full cursor-pointer items-start gap-3 text-left"
+          :aria-expanded="showSchoolsPanel"
+          @click="showSchoolsPanel = !showSchoolsPanel"
+        >
+          <ChevronDown
+            :size="20"
+            class="mt-0.5 shrink-0 text-slate-500 transition-transform duration-200"
+            :class="showSchoolsPanel ? 'rotate-180' : ''"
+          />
+          <span class="min-w-0 flex-1">
+            <span class="block text-lg font-medium text-slate-900">Школы</span>
+            <span class="block text-sm text-slate-600">
+              <template v-if="schools.length > 0">
+                {{ schools.length }}
+                {{ schools.length === 1 ? 'школа' : schools.length < 5 ? 'школы' : 'школ' }}
+                в справочнике
+              </template>
+              <template v-else>Нажмите, чтобы добавить город и школу</template>
+            </span>
+          </span>
+        </button>
+        <div v-if="showSchoolsPanel" class="mt-4 space-y-3 border-t border-neutral-100 pt-4">
+          <p class="text-sm text-slate-600">
+            Если у школы указан город, покупатель его не вводит: город подставится в заказ.
+            Пока город пустой, его спросят на карточке товара. «Другая школа» — это свободный ввод города и названия.
+          </p>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <input
+              v-model="schoolCityDraft"
+              type="text"
+              :class="inputClass"
+              placeholder="Город, например: Казань"
+              maxlength="255"
+            />
+            <input
+              v-model="schoolNameDraft"
+              type="text"
+              :class="inputClass"
+              placeholder="Школа, например: Гимназия 5"
+              maxlength="255"
+              @keydown.enter.prevent="createSchool"
+            />
+            <Button type="button" variant="outline" :disabled="savingSchool" @click="createSchool">
+              Добавить
+            </Button>
+          </div>
+          <div v-if="schools.length > 0" class="space-y-2">
+            <div
+              v-for="school in schools"
+              :key="school.id"
+              class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-slate-700"
+            >
+              <div v-if="editingSchoolId === school.id" class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <input v-model="editingSchoolCity" type="text" :class="inputClass" maxlength="255" />
+                <input v-model="editingSchoolName" type="text" :class="inputClass" maxlength="255" />
+                <div class="flex gap-2">
+                  <Button type="button" variant="primary" size="sm" :disabled="savingSchool" @click="saveSchoolEdit">
+                    Готово
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" @click="cancelEditSchool">Отмена</Button>
+                </div>
+              </div>
+              <div v-else class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span class="min-w-0 break-words">
+                  <span v-if="school.city.trim()">{{ school.city }} — {{ school.name }}</span>
+                  <span v-else>{{ school.name }}</span>
+                  <span v-if="!school.city.trim()" class="mt-1 block text-xs text-amber-700">
+                    Город не указан — школа не видна покупателям
+                  </span>
+                </span>
+                <div class="flex shrink-0 gap-3">
+                  <button type="button" class="text-slate-600 hover:text-slate-900" @click="startEditSchool(school)">
+                    Изменить
+                  </button>
+                  <button
+                    type="button"
+                    class="text-slate-500 hover:text-red-600"
+                    :disabled="savingSchool"
+                    @click="removeSchool(school)"
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p v-else class="text-sm text-slate-500">Школ пока нет.</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 mb-6 shadow-sm">
+        <button
+          type="button"
+          class="flex w-full cursor-pointer items-start gap-3 text-left"
           :aria-expanded="showDefaultSchoolColorsPanel"
           @click="showDefaultSchoolColorsPanel = !showDefaultSchoolColorsPanel"
         >
@@ -988,7 +1183,7 @@ onMounted(() => {
             :class="showDefaultSchoolColorsPanel ? 'rotate-180' : ''"
           />
           <span class="min-w-0 flex-1">
-            <span class="block text-lg font-medium text-slate-900">Общий список «Школа / цвет»</span>
+            <span class="block text-lg font-medium text-slate-900">Цвета</span>
             <span class="block text-sm text-slate-600">
               <template v-if="defaultSchoolColors.length > 0">
                 {{ defaultSchoolColors.length }}
@@ -1007,15 +1202,15 @@ onMounted(() => {
         </button>
         <div v-if="showDefaultSchoolColorsPanel" class="mt-4 space-y-3 border-t border-neutral-100 pt-4">
           <p class="text-sm text-slate-600">
-            Эти варианты доступны у всех товаров по умолчанию. В карточке товара можно отключить ненужные
-            или добавить свои.
+            Эти цвета доступны у всех товаров по умолчанию. Школы задаются в справочнике выше. В карточке
+            товара можно отключить ненужные цвета или добавить свои.
           </p>
           <div class="flex gap-2">
             <input
               v-model="defaultColorDraft"
               type="text"
               :class="inputClass"
-              placeholder="Например: Школа №2, черный"
+              placeholder="Например: черный"
               @keydown.enter="onDefaultColorDraftEnter"
             />
             <Button type="button" variant="outline" @click="addDefaultColorFromDraft">Добавить</Button>
@@ -1067,7 +1262,7 @@ onMounted(() => {
             </div>
           </div>
           <Button type="button" variant="primary" :disabled="savingDefaults" @click="saveDefaultSchoolColors">
-            {{ savingDefaults ? 'Сохранение…' : 'Сохранить общий список' }}
+            {{ savingDefaults ? 'Сохранение…' : 'Сохранить цвета' }}
           </Button>
         </div>
       </div>
@@ -1210,10 +1405,10 @@ onMounted(() => {
             <input id="ap-season" v-model="formSeason" type="text" :class="inputClass" placeholder="Необязательно" />
           </div>
           <div class="md:col-span-2">
-            <label class="block text-xs font-medium text-slate-600 mb-1">Школа / цвет для этого товара</label>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Цвет для этого товара</label>
             <div class="space-y-4 rounded-md border border-neutral-200 bg-neutral-50/60 p-3">
               <div v-if="defaultSchoolColors.length > 0">
-                <p class="text-xs font-medium text-slate-600 mb-2">Из общего списка</p>
+                <p class="text-xs font-medium text-slate-600 mb-2">Из общего списка цветов</p>
                 <div class="space-y-2">
                   <label
                     v-for="option in sortedDefaultSchoolColors"
@@ -1231,7 +1426,7 @@ onMounted(() => {
                 </div>
               </div>
               <p v-else class="text-xs text-slate-500">
-                Сначала добавьте варианты в общий список выше — они появятся здесь галочками.
+                Сначала добавьте цвета в общий список выше — они появятся здесь галочками.
               </p>
               <div>
                 <p class="text-xs font-medium text-slate-600 mb-2">Дополнительно только для этого товара</p>
@@ -1241,7 +1436,7 @@ onMounted(() => {
                     v-model="colorDraft"
                     type="text"
                     :class="inputClass"
-                    placeholder="Например: Школа №5, синий"
+                    placeholder="Например: синий"
                     @keydown.enter="onColorDraftEnter"
                   />
                   <Button type="button" variant="outline" @click="addExtraColorFromDraft">Добавить</Button>

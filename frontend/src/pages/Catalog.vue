@@ -11,8 +11,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
 import CatalogCropViewport from '../components/catalog/CatalogCropViewport.vue'
 import { clampCatalogCrop, DEFAULT_CATALOG_CROP } from '../utils/catalogCrop'
-import { useToast } from '../composables/useToast'
-import { parseSchoolColorOptions } from '../utils/productSchoolColors'
 import {
   defaultSelectedSize,
   isProductSizeAllowed,
@@ -74,14 +72,12 @@ function parseGenderQuery(q: unknown): GenderFilter {
 
 const route = useRoute()
 const router = useRouter()
-const { showToast } = useToast()
 
 const selectedCategory = ref('all')
 const sortBy = ref('popular')
 const selectedGender = ref<GenderFilter>(parseGenderQuery(route.query.gender))
 
 const products = ref<CatalogProduct[]>([])
-const addingProductId = ref<number | null>(null)
 const cartByProductSizeKey = ref<Record<string, CartStateItem>>({})
 const selectedSizeByProductId = ref<Record<number, string>>({})
 const currentMediaIndexByProductId = ref<Record<number, number>>({})
@@ -259,68 +255,12 @@ function resetFilters() {
   selectedGender.value = 'all'
 }
 
-async function addToCart(product: CatalogProduct) {
-  const token = getStoredToken()
-  if (!token) {
-    router.push('/login')
-    return
-  }
-
-  const selectedSize =
-    product.sizes.length > 0
-      ? defaultSelectedSize(product.sizes, selectedSizeByProductId.value[product.id])
-      : null
-
-  addingProductId.value = product.id
-  try {
-    const response = await axios.post(
-      '/api/cart/add',
-      {
-        product_id: product.id,
-        quantity: 1,
-        selected_size: selectedSize,
-        selected_color: null,
-      },
-      {
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    )
-
-    const item = response.data?.item
-    const itemId = Number(item?.id)
-    const quantity = Number(item?.quantity ?? 1)
-    if (itemId > 0) {
-      cartByProductSizeKey.value = {
-        ...cartByProductSizeKey.value,
-        [productSizeKey(product.id, selectedSize ?? '', '')]: {
-          itemId,
-          quantity: quantity > 0 ? quantity : 1,
-        },
-      }
-    }
-
-    showToast('Товар добавлен в корзину', 'success')
-  } catch (err: any) {
-    const message = String(err?.response?.data?.message ?? '').trim()
-    showToast(message || 'Не удалось добавить в корзину', 'error')
-  } finally {
-    addingProductId.value = null
-  }
-}
-
 function handleCartButtonClick(product: CatalogProduct) {
   if (cartQuantity(product.id) > 0) {
     void router.push('/cart')
     return
   }
-  if (parseSchoolColorOptions(product.color).length > 0 || product.gender === 'all') {
-    void router.push(`/product/${product.id}`)
-    return
-  }
-  void addToCart(product)
+  void router.push(`/product/${product.id}`)
 }
 
 function cartQuantity(productId: number): number {
@@ -622,7 +562,7 @@ function changeProductMedia(product: CatalogProduct, step: number) {
                             ? '!bg-emerald-600 !text-white !border-emerald-600 hover:!bg-emerald-500'
                             : ''
                         "
-                        :disabled="(!product.inStock && cartQuantity(product.id) === 0) || (addingProductId === product.id && cartQuantity(product.id) === 0)"
+                        :disabled="!product.inStock && cartQuantity(product.id) === 0"
                       >
                         <ShoppingCart :size="16" />
                         <span v-if="!product.inStock">Нет в наличии</span>

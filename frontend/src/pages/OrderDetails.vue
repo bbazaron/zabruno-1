@@ -11,6 +11,7 @@ import { useToast } from '../composables/useToast'
 import { usePickupAddress } from '../composables/usePickupAddress'
 import { useProductLinkResolver } from '../composables/useProductLinkResolver'
 import { itemGenderLabel } from '../utils/productGender'
+import { formatLineSchoolMeta } from '../utils/lineSchool'
 import { Phone, MapPin, Package, Info } from 'lucide-vue-next'
 
 interface OrderItem {
@@ -19,6 +20,8 @@ interface OrderItem {
   quantity: number
   size_override?: string | null
   selected_color?: string | null
+  school_city?: string | null
+  school_name?: string | null
   selected_class?: string | null
   selected_gender?: string | null
   line_comment?: string | null
@@ -422,8 +425,8 @@ onMounted(() => {
                 >
                   Пол: {{ itemGenderLabel(item.selected_gender, order.child_gender) }}
                 </p>
-                <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
-                  Школа / цвет: {{ item.selected_color }}
+                <p v-if="formatLineSchoolMeta(item)" class="text-xs text-slate-600 mt-1">
+                  {{ formatLineSchoolMeta(item) }}
                 </p>
                 <p v-if="item.selected_class" class="text-xs text-slate-600 mt-1">
                   Класс: {{ item.selected_class }}

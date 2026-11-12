@@ -8,6 +8,7 @@ use App\Models\PaymentRefund;
 use App\Models\Product;
 use App\Models\UserProduct;
 use App\Models\User;
+use App\Support\OrderSchoolSummary;
 use App\Support\PickupAddress;
 use App\Support\ProductGender;
 use App\Support\YooKassaReceipt;
@@ -134,6 +135,12 @@ class OrderService
             $lineTotal = $unitPrice * $qty;
             $total += $lineTotal;
 
+            $schoolCity = trim((string) ($cartItem->school_city ?? ''));
+            $schoolName = trim((string) ($cartItem->school_name ?? ''));
+            if ($schoolCity === '' || $schoolName === '') {
+                throw new \RuntimeException('Укажите город и школу для каждого товара');
+            }
+
             $lines[] = [
                 'product_id' => $product->id,
                 'product_name' => (string) $product->name,
@@ -142,6 +149,9 @@ class OrderService
                 'selected_color' => $cartItem->selected_color,
                 'selected_class' => $cartItem->selected_class,
                 'selected_gender' => $cartItem->selected_gender,
+                'school_id' => $cartItem->school_id,
+                'school_city' => $schoolCity,
+                'school_name' => $schoolName,
             ];
         }
 
@@ -155,14 +165,16 @@ class OrderService
             $email = $user?->email ?? '';
         }
 
+        $schoolSummary = OrderSchoolSummary::fromLines($lines);
+
         $payload = [
             'user_id' => $userId,
             'order_type' => 'ready_to_wear',
             'status' => $total > 0 ? 'pending_payment' : 'pending',
             'child_full_name' => 'Готовая одежда',
             'child_gender' => 'boy',
-            'settlement' => 'Не указано',
-            'school' => 'Не указано',
+            'settlement' => $schoolSummary['settlement'],
+            'school' => $schoolSummary['school'],
             'class_num' => '-',
             'class_letter' => '-',
             'school_year' => '-',
@@ -202,6 +214,9 @@ class OrderService
                     'selected_color' => $line['selected_color'] ?? null,
                     'selected_class' => $line['selected_class'] ?? null,
                     'selected_gender' => $line['selected_gender'] ?? null,
+                    'school_id' => $line['school_id'] ?? null,
+                    'school_city' => $line['school_city'] ?? null,
+                    'school_name' => $line['school_name'] ?? null,
                     'line_comment' => null,
                 ]);
             }
@@ -606,6 +621,7 @@ class OrderService
                     ->orWhere('parent_email', 'like', '%'.$search.'%')
                     ->orWhere('child_full_name', 'like', '%'.$search.'%')
                     ->orWhere('school', 'like', '%'.$search.'%')
+                    ->orWhere('settlement', 'like', '%'.$search.'%')
                     ->orWhere('status', 'like', '%'.$search.'%')
                     ->orWhere('id', 'like', '%'.$idSearch.'%');
             });
@@ -879,6 +895,9 @@ class OrderService
                     'selected_color' => $row['selected_color'] ?? null,
                     'selected_class' => $row['selected_class'] ?? null,
                     'selected_gender' => isset($row['selected_gender']) ? ProductGender::normalizeSelectedForItem($row['selected_gender']) : null,
+                    'school_id' => $row['school_id'] ?? null,
+                    'school_city' => isset($row['school_city']) ? (trim((string) $row['school_city']) ?: null) : null,
+                    'school_name' => isset($row['school_name']) ? (trim((string) $row['school_name']) ?: null) : null,
                     'line_comment' => $row['line_comment'] ?? null,
                 ]);
             }

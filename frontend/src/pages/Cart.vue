@@ -8,6 +8,7 @@ import Button from '../components/ui/Button.vue'
 import Typography from '../components/ui/Typography.vue'
 import { useToast } from '../composables/useToast'
 import { resolveBackendMediaUrl } from '../utils/resolveBackendMediaUrl'
+import { formatLineSchoolMeta } from '../utils/lineSchool'
 import {
   normalizeSelectedGender,
   productGenderRequiresChoice,
@@ -21,6 +22,8 @@ interface CartItem {
   quantity: number
   selected_size?: string | null
   selected_color?: string | null
+  school_city?: string | null
+  school_name?: string | null
   selected_class?: string | null
   selected_gender?: string | null
   product: {
@@ -365,8 +368,8 @@ onMounted(() => {
               <p v-if="item.selected_size" class="text-xs text-slate-500 mt-1">
                 Размер: {{ item.selected_size }}
               </p>
-              <p v-if="item.selected_color" class="text-xs text-slate-500 mt-1">
-                Школа / цвет: {{ item.selected_color }}
+              <p v-if="formatLineSchoolMeta(item)" class="text-xs text-slate-500 mt-1">
+                {{ formatLineSchoolMeta(item) }}
               </p>
               <p v-if="item.selected_class" class="text-xs text-slate-500 mt-1">
                 Класс: {{ item.selected_class }}

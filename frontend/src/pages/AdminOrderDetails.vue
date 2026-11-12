@@ -18,6 +18,9 @@ interface OrderItem {
   quantity: number
   size_override?: string | null
   selected_color?: string | null
+  school_id?: number | null
+  school_city?: string | null
+  school_name?: string | null
   selected_class?: string | null
   selected_gender?: string | null
   line_comment?: string | null
@@ -73,6 +76,9 @@ interface ItemDraft {
   quantity: number
   size_override: string
   selected_color: string
+  school_id: number | null
+  school_city: string
+  school_name: string
   selected_class: string
   selected_gender: '' | 'boy' | 'girl'
   line_comment: string
@@ -343,6 +349,9 @@ function orderToDraft(o: AdminOrder): OrderDraft {
             quantity: i.quantity,
             size_override: i.size_override ?? '',
             selected_color: i.selected_color ?? '',
+            school_id: i.school_id ?? null,
+            school_city: i.school_city ?? '',
+            school_name: i.school_name ?? '',
             selected_class: i.selected_class ?? '',
             selected_gender:
               i.selected_gender === 'girl' ? 'girl' : i.selected_gender === 'boy' ? 'boy' : '',
@@ -354,6 +363,9 @@ function orderToDraft(o: AdminOrder): OrderDraft {
               quantity: 1,
               size_override: '',
               selected_color: '',
+              school_id: null,
+              school_city: '',
+              school_name: '',
               selected_class: '',
               selected_gender: '',
               line_comment: '',
@@ -369,6 +381,9 @@ function buildPayload(d: OrderDraft) {
       quantity: Math.max(1, Math.floor(Number(i.quantity)) || 1),
       size_override: i.size_override.trim() || null,
       selected_color: i.selected_color.trim() || null,
+      school_id: i.school_id,
+      school_city: i.school_city.trim() || null,
+      school_name: i.school_name.trim() || null,
       selected_class: i.selected_class.trim() || null,
       selected_gender: i.selected_gender || null,
       line_comment: i.line_comment.trim() || null,
@@ -420,6 +435,9 @@ function addDraftItem() {
     quantity: 1,
     size_override: '',
     selected_color: '',
+    school_id: null,
+    school_city: '',
+    school_name: '',
     selected_class: '',
     selected_gender: '',
     line_comment: '',
@@ -891,8 +909,14 @@ onMounted(() => {
                   >
                     Пол: {{ itemGenderLabel(item.selected_gender, order.child_gender) }}
                   </p>
+                  <p v-if="item.school_city" class="text-xs text-slate-600 mt-1">
+                    Город: {{ item.school_city }}
+                  </p>
+                  <p v-if="item.school_name" class="text-xs text-slate-600 mt-1">
+                    Школа: {{ item.school_name }}
+                  </p>
                   <p v-if="item.selected_color" class="text-xs text-slate-600 mt-1">
-                    Школа / цвет: {{ item.selected_color }}
+                    {{ item.school_name || item.school_city ? 'Цвет' : 'Школа / цвет' }}: {{ item.selected_color }}
                   </p>
                   <p v-if="item.selected_class" class="text-xs text-slate-600 mt-1">
                     Класс: {{ item.selected_class }}
@@ -962,7 +986,15 @@ onMounted(() => {
                     <input v-model="row.size_override" type="text" :class="inputClass" />
                   </div>
                   <div>
-                    <label class="block text-xs text-slate-500 mb-1">Школа / цвет</label>
+                    <label class="block text-xs text-slate-500 mb-1">Город</label>
+                    <input v-model="row.school_city" type="text" :class="inputClass" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Школа</label>
+                    <input v-model="row.school_name" type="text" :class="inputClass" />
+                  </div>
+                  <div>
+                    <label class="block text-xs text-slate-500 mb-1">Цвет</label>
                     <input v-model="row.selected_color" type="text" :class="inputClass" />
                   </div>
                   <div>
@@ -1084,6 +1116,14 @@ onMounted(() => {
               <div class="flex flex-col sm:flex-row sm:gap-2">
                 <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">Email</dt>
                 <dd class="break-all">{{ order.parent_email }}</dd>
+              </div>
+              <div v-if="isReadyToWearOrder" class="flex flex-col sm:flex-row sm:gap-2">
+                <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">Город</dt>
+                <dd>{{ order.settlement }}</dd>
+              </div>
+              <div v-if="isReadyToWearOrder" class="flex flex-col sm:flex-row sm:gap-2">
+                <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">Школа</dt>
+                <dd>{{ order.school }}</dd>
               </div>
               <div v-if="order.messenger_max" class="flex flex-col sm:flex-row sm:gap-2">
                 <dt class="text-slate-500 shrink-0 sm:min-w-[140px]">MAX</dt>

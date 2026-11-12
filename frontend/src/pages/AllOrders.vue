@@ -14,6 +14,8 @@ interface AdminOrderItem {
   product_name: string
   quantity: number
   size_override?: string | null
+  school_city?: string | null
+  school_name?: string | null
 }
 
 interface AdminOrder {
@@ -256,13 +258,20 @@ function aggregateProductionForOrders(list: AdminOrder[]) {
     const st = String(order.status || '').toLowerCase()
     if (PRODUCTION_EXCLUDED_STATUSES.has(st)) continue
 
-    const school = String(order.school || '').trim() || '—'
+    const orderSchool = String(order.school || '').trim()
 
     for (const item of order.items ?? []) {
       const name = String(item.product_name || '').trim()
       if (!name) continue
       const qty = Math.max(0, Math.floor(Number(item.quantity)) || 0)
       if (qty <= 0) continue
+      const lineName = String(item.school_name || '').trim()
+      const lineCity = String(item.school_city || '').trim()
+      const school = lineName
+        ? lineCity
+          ? `${lineCity} — ${lineName}`
+          : lineName
+        : orderSchool || '—'
       const size = effectiveLineSize(item, order)
       const key = `${school}\u0000${name}\u0000${size}`
       const cur = map.get(key)
@@ -342,6 +351,28 @@ function applyOrdersExportSheetLayout(ws: XLSX.WorkSheet) {
   }
 }
 
+function uniqueJoined(values: Array<string | null | undefined>): string {
+  const out: string[] = []
+  for (const value of values) {
+    const trimmed = String(value ?? '').trim()
+    if (!trimmed || trimmed === 'Не указано' || trimmed === '-' || out.includes(trimmed)) continue
+    out.push(trimmed)
+  }
+  return out.join(', ')
+}
+
+function orderSettlementLabel(order: AdminOrder): string {
+  const direct = String(order.settlement || '').trim()
+  if (direct && direct !== 'Не указано' && direct !== '-') return direct
+  return uniqueJoined((order.items ?? []).map((item) => item.school_city))
+}
+
+function orderSchoolLabel(order: AdminOrder): string {
+  const direct = String(order.school || '').trim()
+  if (direct && direct !== 'Не указано' && direct !== '-') return direct
+  return uniqueJoined((order.items ?? []).map((item) => item.school_name))
+}
+
 /** Выгрузка всех загруженных заказов в Excel (.xlsx) через SheetJS. */
 function exportOrdersToXlsx(list: AdminOrder[]) {
   if (list.length === 0) {
@@ -358,8 +389,8 @@ function exportOrdersToXlsx(list: AdminOrder[]) {
     Ребёнок: o.child_full_name || '',
     Телефон: o.parent_phone || '',
     Email: o.parent_email || o.user?.email || '',
-    'Населённый пункт': o.settlement || '',
-    Школа: o.school || '',
+    'Населённый пункт': orderSettlementLabel(o),
+    Школа: orderSchoolLabel(o),
   }))
 
   const ws = XLSX.utils.json_to_sheet(rows)
@@ -733,11 +764,11 @@ onBeforeUnmount(() => {
                   <td class="py-2 px-3">{{ order.parent_full_name || order.user?.name || '-' }}</td>
                   <td class="py-2 px-3 whitespace-nowrap">{{ order.parent_phone || '-' }}</td>
                   <td class="py-2 px-3">{{ order.parent_email || order.user?.email || '-' }}</td>
-                  <td class="py-2 px-3">{{ order.settlement || '-' }}</td>
+                  <td class="py-2 px-3">{{ orderSettlementLabel(order) || '-' }}</td>
                   <td class="py-2 px-3 whitespace-nowrap">{{ formatOrderTotal(order.total_amount) }}</td>
                   <td class="py-2 px-3">
                     <div class="flex items-center justify-between gap-2 min-w-[170px]">
-                      <span>{{ order.school || '-' }}</span>
+                      <span>{{ orderSchoolLabel(order) || '-' }}</span>
                       <Button size="sm" variant="primary" @click.stop="openOrder(order.id)">Открыть</Button>
                     </div>
                   </td>
