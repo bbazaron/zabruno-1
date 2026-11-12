@@ -580,10 +580,7 @@ onMounted(() => {
       </div>
 
       <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 mb-6 shadow-sm">
-        <Typography as="h2" class="text-lg font-medium mb-1">{{ formTitle }}</Typography>
-        <p class="mb-4 text-sm text-slate-600">
-          Заполните название и цену пошива. Товар из каталога можно скопировать кнопкой — каталог при этом не меняется.
-        </p>
+        <Typography as="h2" class="text-lg font-medium mb-4">{{ formTitle }}</Typography>
         <form class="grid gap-4 md:grid-cols-2" @submit.prevent="submitForm">
           <div v-if="editingId == null" class="md:col-span-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:p-4">
             <p class="text-sm font-medium text-slate-900">Скопировать товар из каталога</p>
@@ -802,7 +799,7 @@ onMounted(() => {
                 Вернуть фото
               </Button>
             </div>
-            <p class="text-xs text-slate-500">PNG, JPG или WEBP, до 10 фото.</p>
+            <p class="text-xs text-slate-500">PNG, JPG или WEBP, до 5 МБ, до 10 фото.</p>
           </div>
 
           <div class="md:col-span-2 flex flex-wrap gap-2">
@@ -817,7 +814,7 @@ onMounted(() => {
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(20rem,0.85fr)] items-start">
         <div class="rounded-lg border border-neutral-200 bg-white p-4 sm:p-6 shadow-sm min-w-0">
           <Typography as="h2" class="text-lg font-medium mb-1">Уже добавленные карточки</Typography>
-          <p class="text-sm text-slate-600 mb-4">Стрелки меняют порядок в форме заказа. Справа — как это видит родитель.</p>
+          <p class="text-sm text-slate-600 mb-4">Стрелки меняют порядок в форме заказа. Справа — как это видит клиент.</p>
           <div v-if="loading" class="text-slate-600 py-8 text-center">Загрузка…</div>
           <div v-else-if="items.length === 0" class="text-slate-600 py-8 text-center">
             Карточек пока нет. Заполните форму выше и нажмите «Добавить карточку».

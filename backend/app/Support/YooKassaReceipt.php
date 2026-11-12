@@ -87,66 +87,133 @@ final class YooKassaReceipt
                 continue;
             }
 
-            $lineTotal = round($unitPrice * $qty, 2);
-            $sum += $lineTotal;
+            $sum += round($unitPrice * $qty, 2);
 
             $description = trim((string) $item->product_name);
             if ($description === '') {
                 $description = 'Товар';
             }
-            $description = mb_substr($description, 0, 128);
 
-            $lines[] = [
-                'description' => $description,
-                'quantity' => number_format((float) $qty, 2, '.', ''),
-                'amount' => [
-                    'value' => number_format($lineTotal, 2, '.', ''),
-                    'currency' => 'RUB',
-                ],
-                'vat_code' => $vatCode,
-                'payment_mode' => $paymentMode,
-                'payment_subject' => $paymentSubject,
-            ];
+            $lines[] = self::receiptLine(
+                $description,
+                $qty,
+                $unitPrice,
+                $vatCode,
+                $paymentMode,
+                $paymentSubject,
+            );
         }
 
         if ($lines === []) {
-            $lines[] = [
-                'description' => mb_substr('Заказ №'.$order->id, 0, 128),
-                'quantity' => '1.00',
-                'amount' => [
-                    'value' => number_format($targetTotal, 2, '.', ''),
-                    'currency' => 'RUB',
-                ],
-                'vat_code' => $vatCode,
-                'payment_mode' => $paymentMode,
-                'payment_subject' => $paymentSubject,
+            return [
+                self::receiptLine(
+                    'Заказ №'.$order->id,
+                    1,
+                    $targetTotal,
+                    $vatCode,
+                    $paymentMode,
+                    $paymentSubject,
+                ),
             ];
-
-            return $lines;
         }
 
         $sum = round($sum, 2);
         $diff = round($targetTotal - $sum, 2);
         if (abs($diff) >= 0.01) {
-            $lastIndex = count($lines) - 1;
-            $lastValue = (float) $lines[$lastIndex]['amount']['value'];
-            $adjusted = round($lastValue + $diff, 2);
-            if ($adjusted <= 0) {
-                $lines = [[
-                    'description' => mb_substr('Заказ №'.$order->id, 0, 128),
-                    'quantity' => '1.00',
-                    'amount' => [
-                        'value' => number_format($targetTotal, 2, '.', ''),
-                        'currency' => 'RUB',
-                    ],
-                    'vat_code' => $vatCode,
-                    'payment_mode' => $paymentMode,
-                    'payment_subject' => $paymentSubject,
-                ]];
-            } else {
-                $lines[$lastIndex]['amount']['value'] = number_format($adjusted, 2, '.', '');
-            }
+            $lines = self::applyTotalDiff(
+                $lines,
+                $diff,
+                $targetTotal,
+                $order,
+                $vatCode,
+                $paymentMode,
+                $paymentSubject,
+            );
         }
+
+        return $lines;
+    }
+
+    /**
+     * В чеке ЮKassa amount — цена одной единицы. Касса считает quantity × amount
+     * и сверяет итог с суммой платежа.
+     *
+     * @return array<string, mixed>
+     */
+    private static function receiptLine(
+        string $description,
+        int|float $quantity,
+        float $unitPrice,
+        int $vatCode,
+        string $paymentMode,
+        string $paymentSubject,
+    ): array {
+        return [
+            'description' => mb_substr($description, 0, 128),
+            'quantity' => number_format((float) $quantity, 2, '.', ''),
+            'amount' => [
+                'value' => number_format(round($unitPrice, 2), 2, '.', ''),
+                'currency' => 'RUB',
+            ],
+            'vat_code' => $vatCode,
+            'payment_mode' => $paymentMode,
+            'payment_subject' => $paymentSubject,
+        ];
+    }
+
+    /**
+     * Разницу между суммой заказа и суммой позиций нельзя прибавлять к цене единицы:
+     * при quantity > 1 касса умножит её повторно и отклонит платёж.
+     *
+     * @param  list<array<string, mixed>>  $lines
+     * @return list<array<string, mixed>>
+     */
+    private static function applyTotalDiff(
+        array $lines,
+        float $diff,
+        float $targetTotal,
+        Order $order,
+        int $vatCode,
+        string $paymentMode,
+        string $paymentSubject,
+    ): array {
+        $fallback = [
+            self::receiptLine(
+                'Заказ №'.$order->id,
+                1,
+                $targetTotal,
+                $vatCode,
+                $paymentMode,
+                $paymentSubject,
+            ),
+        ];
+
+        $lastIndex = count($lines) - 1;
+        $last = $lines[$lastIndex];
+        $lastQty = (int) round((float) $last['quantity']);
+        $lastUnit = (float) $last['amount']['value'];
+
+        if ($lastQty <= 1) {
+            $adjusted = round($lastUnit + $diff, 2);
+            if ($adjusted <= 0) {
+                return $fallback;
+            }
+
+            $lines[$lastIndex]['amount']['value'] = number_format($adjusted, 2, '.', '');
+
+            return $lines;
+        }
+
+        $adjustedUnit = round($lastUnit + $diff, 2);
+        if ($adjustedUnit <= 0) {
+            return $fallback;
+        }
+
+        $lines[$lastIndex]['quantity'] = number_format($lastQty - 1, 2, '.', '');
+        $extra = $last;
+        $extra['quantity'] = '1.00';
+        $extra['amount']['value'] = number_format($adjustedUnit, 2, '.', '');
+        $lines[] = $extra;
 
         return $lines;
     }
