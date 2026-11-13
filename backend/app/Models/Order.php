@@ -69,4 +69,9 @@ class Order extends Model
     {
         return $this->hasMany(PaymentRefund::class)->latest();
     }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(OrderPayment::class)->latest();
+    }
 }

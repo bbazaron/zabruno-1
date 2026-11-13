@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\PaymentLinkException;
 use App\Http\Requests\EstimateOrderTotalRequest;
 use App\Http\Requests\StoreOrderRequest;
 use App\Http\Requests\UpdateAdminOrderRequest;
@@ -224,6 +225,48 @@ class OrderController extends Controller
             'order' => $result['order'],
             'refund' => $result['refund'],
             'available_to_refund' => $result['available_to_refund'],
+        ]);
+    }
+
+    public function payMyOrder(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        if ($user === null) {
+            return response()->json([
+                'message' => 'Unauthorized',
+            ], 401);
+        }
+
+        return $this->paymentLinkResponse($request, $id, (int) $user->id);
+    }
+
+    public function adminPaymentLink(Request $request, int $id): JsonResponse
+    {
+        return $this->paymentLinkResponse($request, $id, null);
+    }
+
+    private function paymentLinkResponse(Request $request, int $id, ?int $ownerUserId): JsonResponse
+    {
+        try {
+            $result = $this->orderService->issuePaymentLink($request, $id, $ownerUserId);
+        } catch (PaymentLinkException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], $e->httpStatus());
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 503);
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'Не удалось подготовить ссылку на оплату',
+            ], 503);
+        }
+
+        return response()->json([
+            'confirmation_url' => $result['confirmation_url'],
+            'reused' => $result['reused'],
+            'order' => $result['order'],
         ]);
     }
 

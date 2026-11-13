@@ -3,6 +3,10 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\OrderPayment;
+use App\Models\PaymentRefund;
+use App\Support\YooKassaReceipt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -251,7 +255,25 @@ class YooKassaClient
             return ['http' => 502, 'json' => ['message' => 'Upstream error']];
         }
 
-        $order = Order::query()->where('yookassa_payment_id', $paymentId)->first();
+        return $this->settleFetchedPayment($payment, $event);
+    }
+
+    /**
+     * Применяет уже проверенный в ЮKassa платёж к заказу.
+     * Повторная успешная оплата другого платежа по тому же заказу возвращается.
+     *
+     * @param  array<string, mixed>  $payment
+     * @return array{http: int, json: array<string, mixed>}
+     */
+    public function settleFetchedPayment(array $payment, string $event): array
+    {
+        $paymentId = (string) ($payment['id'] ?? '');
+        if ($paymentId === '') {
+            return ['http' => 400, 'json' => ['message' => 'Invalid object']];
+        }
+
+        $attempt = OrderPayment::query()->where('yookassa_payment_id', $paymentId)->first();
+        $order = $attempt?->order ?? Order::query()->where('yookassa_payment_id', $paymentId)->first();
         if ($order === null) {
             Log::info('YooKassa webhook: no order for payment', [
                 'event' => $event,
@@ -296,51 +318,205 @@ class YooKassaClient
         }
 
         $status = (string) (data_get($payment, 'status') ?? '');
+        $confirmationUrl = data_get($payment, 'confirmation.confirmation_url');
+        $duplicatePaymentId = null;
 
-        if ($event === 'payment.succeeded' && $status === 'succeeded') {
-            $claimed = Order::query()
-                ->whereKey($order->id)
-                ->where('yookassa_payment_id', $paymentId)
-                ->where('status', 'pending_payment')
-                ->whereNull('order_received_email_sent_at')
-                ->update([
-                    'status' => 'confirmed',
-                    'yookassa_payment_status' => $status,
-                    'order_received_email_sent_at' => now(),
-                ]);
+        $result = DB::transaction(function () use ($order, $paymentId, $status, $event, $confirmationUrl, $actual, &$duplicatePaymentId) {
+            $locked = Order::query()->lockForUpdate()->find($order->id);
+            if ($locked === null) {
+                return ['http' => 200, 'json' => ['status' => 'ignored']];
+            }
 
-            if ($claimed === 1) {
-                $this->orderReceivedMail->queueAfterCommit($order->id, true);
-            } else {
+            $this->rememberPaymentAttempt(
+                $locked,
+                $paymentId,
+                $status,
+                is_string($confirmationUrl) ? $confirmationUrl : null,
+                is_numeric($actual) ? number_format((float) $actual, 2, '.', '') : number_format((float) $locked->total_amount, 2, '.', ''),
+            );
+
+            $isCurrent = (string) $locked->yookassa_payment_id === $paymentId;
+            $paidStatuses = ['confirmed', 'processing', 'production', 'completed', 'partially_refunded', 'refunded'];
+            $awaitingPayment = ['pending_payment', 'payment_cancelled'];
+
+            if ($event === 'payment.succeeded' && $status === 'succeeded') {
+                $alreadyCaptured = in_array((string) $locked->status, $paidStatuses, true)
+                    && (string) $locked->yookassa_payment_status === 'succeeded'
+                    && (string) $locked->yookassa_payment_id !== ''
+                    && (string) $locked->yookassa_payment_id !== $paymentId;
+
+                if ($alreadyCaptured) {
+                    $duplicatePaymentId = $paymentId;
+
+                    return ['http' => 200, 'json' => ['status' => 'duplicate_refunded']];
+                }
+
+                if (in_array((string) $locked->status, $awaitingPayment, true)) {
+                    $claimed = Order::query()
+                        ->whereKey($locked->id)
+                        ->whereIn('status', $awaitingPayment)
+                        ->whereNull('order_received_email_sent_at')
+                        ->update([
+                            'status' => 'confirmed',
+                            'yookassa_payment_id' => $paymentId,
+                            'yookassa_payment_status' => $status,
+                            'order_received_email_sent_at' => now(),
+                        ]);
+
+                    if ($claimed === 1) {
+                        $this->orderReceivedMail->queueAfterCommit($locked->id, true);
+                    } else {
+                        Order::query()
+                            ->whereKey($locked->id)
+                            ->whereIn('status', $awaitingPayment)
+                            ->update([
+                                'status' => 'confirmed',
+                                'yookassa_payment_id' => $paymentId,
+                                'yookassa_payment_status' => $status,
+                            ]);
+                    }
+                } elseif ($isCurrent) {
+                    Order::query()->whereKey($locked->id)->update([
+                        'yookassa_payment_status' => $status,
+                    ]);
+                }
+            } elseif (($event === 'payment.canceled' || $status === 'canceled') && $isCurrent && $locked->status === 'pending_payment') {
                 Order::query()
-                    ->whereKey($order->id)
+                    ->whereKey($locked->id)
+                    ->where('yookassa_payment_id', $paymentId)
+                    ->where('status', 'pending_payment')
+                    ->update([
+                        'yookassa_payment_status' => $status !== '' ? $status : 'canceled',
+                        'status' => 'payment_cancelled',
+                    ]);
+            } elseif ($isCurrent && $status !== '') {
+                Order::query()
+                    ->whereKey($locked->id)
                     ->where('yookassa_payment_id', $paymentId)
                     ->update(['yookassa_payment_status' => $status]);
             }
-        } elseif ($event === 'payment.canceled' || $status === 'canceled') {
-            Order::query()
-                ->whereKey($order->id)
-                ->where('yookassa_payment_id', $paymentId)
-                ->where('status', 'pending_payment')
-                ->update([
-                    'yookassa_payment_status' => $status,
-                    'status' => 'payment_cancelled',
+
+            Log::info('YooKassa webhook: order updated', [
+                'event' => $event,
+                'payment_id' => $paymentId,
+                'order_id' => $locked->id,
+                'status' => $status,
+                'result' => 'ok',
+            ]);
+
+            return ['http' => 200, 'json' => ['status' => 'ok']];
+        });
+
+        if (is_string($duplicatePaymentId) && $duplicatePaymentId !== '') {
+            try {
+                $this->refundDuplicatePayment($order->fresh() ?? $order, $duplicatePaymentId, (string) $amountValue);
+            } catch (\Throwable $e) {
+                Log::error('YooKassa duplicate payment refund failed', [
+                    'order_id' => $order->id,
+                    'payment_id' => $duplicatePaymentId,
+                    'exception' => $e,
                 ]);
-        } else {
-            Order::query()
-                ->whereKey($order->id)
-                ->where('yookassa_payment_id', $paymentId)
-                ->update(['yookassa_payment_status' => $status]);
+
+                return ['http' => 500, 'json' => ['message' => 'Duplicate refund failed']];
+            }
+
+            Log::warning('YooKassa duplicate payment refunded', [
+                'order_id' => $order->id,
+                'payment_id' => $duplicatePaymentId,
+                'kept_payment_id' => $order->yookassa_payment_id,
+            ]);
         }
 
-        Log::info('YooKassa webhook: order updated', [
-            'event' => $event,
-            'payment_id' => $paymentId,
-            'order_id' => $order->id,
-            'status' => $status,
-            'result' => 'ok',
-        ]);
+        return $result;
+    }
 
-        return ['http' => 200, 'json' => ['status' => 'ok']];
+    public function rememberPaymentAttempt(
+        Order $order,
+        string $paymentId,
+        ?string $status,
+        ?string $confirmationUrl,
+        string $amount,
+        ?string $idempotenceKey = null,
+    ): void {
+        $existing = OrderPayment::query()->where('yookassa_payment_id', $paymentId)->first();
+        if ($existing === null && $idempotenceKey !== null) {
+            $existing = OrderPayment::query()
+                ->where('order_id', $order->id)
+                ->where('idempotence_key', $idempotenceKey)
+                ->first();
+        }
+
+        $payload = [
+            'order_id' => $order->id,
+            'yookassa_payment_id' => $paymentId,
+            'amount' => $amount,
+            'status' => $status,
+        ];
+        if (is_string($confirmationUrl) && $confirmationUrl !== '') {
+            $payload['confirmation_url'] = $confirmationUrl;
+        }
+        if ($idempotenceKey !== null && $idempotenceKey !== '') {
+            $payload['idempotence_key'] = $idempotenceKey;
+        }
+
+        if ($existing === null) {
+            if (! isset($payload['idempotence_key'])) {
+                $payload['idempotence_key'] = 'payment:'.$paymentId;
+            }
+            OrderPayment::query()->create($payload);
+
+            return;
+        }
+
+        $existing->update($payload);
+    }
+
+    /**
+     * Возврат лишнего платежа, если заказ уже оплачен другим платежом.
+     * Сумма возврата не уменьшает refunded_amount заказа: это не возврат товара.
+     */
+    public function refundDuplicatePayment(Order $order, string $paymentId, string $amountValue): void
+    {
+        $amount = number_format(round((float) $amountValue, 2), 2, '.', '');
+        if ((float) $amount <= 0) {
+            return;
+        }
+
+        $idempotenceKey = 'dup-refund:'.$paymentId;
+        $refund = PaymentRefund::query()->where('idempotence_key', $idempotenceKey)->first();
+        if ($refund !== null && $refund->status !== 'failed' && $refund->yookassa_refund_id) {
+            return;
+        }
+
+        if ($refund === null) {
+            $refund = PaymentRefund::query()->create([
+                'order_id' => $order->id,
+                'created_by' => (int) ($order->user_id ?? 0),
+                'yookassa_payment_id' => $paymentId,
+                'amount' => $amount,
+                'reason_code' => 'duplicate_payment',
+                'reason_comment' => 'Повторная оплата того же заказа',
+                'status' => 'pending',
+                'idempotence_key' => $idempotenceKey,
+            ]);
+        }
+
+        $gatewayRefund = $this->createRefund(
+            $paymentId,
+            $amount,
+            'Возврат повторной оплаты заказа №'.$order->id,
+            $idempotenceKey,
+            [
+                'order_id' => (string) $order->id,
+                'reason_code' => 'duplicate_payment',
+            ],
+            YooKassaReceipt::fromOrder($order->loadMissing('items'), $amount),
+        );
+
+        $refund->update([
+            'yookassa_refund_id' => $gatewayRefund['id'],
+            'status' => $gatewayRefund['status'],
+            'gateway_response' => $gatewayRefund,
+        ]);
     }
 }

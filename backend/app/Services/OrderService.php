@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Exceptions\PaymentLinkException;
 use App\Models\CheckoutItem;
 use App\Models\Order;
+use App\Models\OrderPayment;
 use App\Models\PaymentRefund;
 use App\Models\Product;
 use App\Models\UserProduct;
@@ -15,6 +17,7 @@ use App\Support\YooKassaReceipt;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -286,10 +289,246 @@ class OrderService
             'yookassa_payment_status' => $payment['status'],
         ]);
 
+        $this->yooKassa->rememberPaymentAttempt(
+            $order,
+            $payment['id'],
+            $payment['status'],
+            $payment['confirmation_url'],
+            $amountFormatted,
+            $idempotenceKey,
+        );
+
         return [
             'order' => $order->fresh('items'),
             'confirmation_url' => $payment['confirmation_url'],
         ];
+    }
+
+    /**
+     * Ссылка на оплату уже созданного, но не оплаченного заказа.
+     * Пока текущий платёж в ЮKassa ещё ожидает оплату, возвращается та же ссылка.
+     *
+     * @return array{confirmation_url: string, reused: bool, order: Order}
+     */
+    public function issuePaymentLink(Request $request, int $orderId, ?int $ownerUserId): array
+    {
+        $lock = Cache::lock('order-payment:'.$orderId, 50);
+        if (! $lock->get()) {
+            throw new PaymentLinkException('Платёж уже создаётся. Подождите несколько секунд и повторите.', 429);
+        }
+
+        try {
+            return $this->issuePaymentLinkLocked($request, $orderId, $ownerUserId);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * @return array{confirmation_url: string, reused: bool, order: Order}
+     */
+    private function issuePaymentLinkLocked(Request $request, int $orderId, ?int $ownerUserId): array
+    {
+        $order = Order::query()->find($orderId);
+        if ($order === null || ($ownerUserId !== null && (int) $order->user_id !== $ownerUserId)) {
+            throw new PaymentLinkException('Заказ не найден', 404);
+        }
+
+        $payableStatuses = ['pending_payment', 'payment_cancelled'];
+        if (! in_array((string) $order->status, $payableStatuses, true)) {
+            throw new PaymentLinkException('Оплатить можно только заказ, который ещё не оплачен');
+        }
+
+        $amount = round((float) $order->total_amount, 2);
+        if ($amount <= 0) {
+            throw new PaymentLinkException('Сумма заказа не требует оплаты');
+        }
+
+        if (! $this->yooKassa->isConfigured()) {
+            throw new \RuntimeException('ЮKassa не настроена: задайте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY в .env');
+        }
+
+        $amountFormatted = number_format($amount, 2, '.', '');
+        $paymentId = trim((string) $order->yookassa_payment_id);
+
+        if ($paymentId !== '') {
+            $remote = $this->yooKassa->getPayment($paymentId);
+            if ($remote === null) {
+                throw new \RuntimeException('Не удалось проверить текущий платёж. Повторите попытку через минуту.');
+            }
+
+            $remoteStatus = (string) (data_get($remote, 'status') ?? '');
+            $remoteAmount = data_get($remote, 'amount.value');
+            $remoteAmountValue = is_numeric($remoteAmount) ? round((float) $remoteAmount, 2) : null;
+            if ($remoteAmountValue !== null && abs($remoteAmountValue - $amount) > 0.01 && $remoteStatus !== 'canceled') {
+                throw new PaymentLinkException('По заказу уже открыт платёж на другую сумму. Новую ссылку можно выдать после отмены этого платежа.');
+            }
+
+            if ($remoteStatus === 'succeeded') {
+                $this->yooKassa->settleFetchedPayment($remote, 'payment.succeeded');
+                throw new PaymentLinkException('Заказ уже оплачен');
+            }
+
+            if (in_array($remoteStatus, ['pending', 'waiting_for_capture'], true)) {
+                $url = $this->confirmationUrlFromPayment($remote, $order, $paymentId);
+                if ($url === null) {
+                    throw new PaymentLinkException('Платёж уже обрабатывается. Новая ссылка не создана, чтобы не списать деньги дважды.');
+                }
+
+                $this->yooKassa->rememberPaymentAttempt(
+                    $order,
+                    $paymentId,
+                    $remoteStatus,
+                    $url,
+                    $amountFormatted,
+                    $order->yookassa_idempotence_key,
+                );
+
+                return [
+                    'confirmation_url' => $url,
+                    'reused' => true,
+                    'order' => $order->fresh(['items', 'user']) ?? $order,
+                ];
+            }
+        }
+
+        $existingKey = trim((string) $order->yookassa_idempotence_key);
+        if ($paymentId === '' && $existingKey !== '') {
+            $idempotenceKey = $existingKey;
+        } else {
+            $idempotenceKey = $this->reserveNextPaymentAttempt($order, $amountFormatted);
+        }
+        $returnUrl = $this->yookassaReturnUrl($request);
+
+        try {
+            $payment = $this->yooKassa->createRedirectPayment(
+                $amountFormatted,
+                'Заказ №'.$order->id,
+                $returnUrl,
+                ['order_id' => (string) $order->id],
+                $idempotenceKey,
+                YooKassaReceipt::fromOrder($order->loadMissing('items'), $amountFormatted),
+            );
+        } catch (\Throwable $e) {
+            throw $e;
+        }
+
+        $confirmationUrl = $this->assertYooKassaConfirmationUrl($payment['confirmation_url']);
+
+        DB::transaction(function () use ($order, $payment, $idempotenceKey, $amountFormatted, $confirmationUrl) {
+            $locked = Order::query()->lockForUpdate()->find($order->id);
+            if ($locked === null) {
+                throw new PaymentLinkException('Заказ не найден', 404);
+            }
+
+            if (! in_array((string) $locked->status, ['pending_payment', 'payment_cancelled'], true)) {
+                throw new PaymentLinkException('Заказ уже оплачен');
+            }
+
+            $locked->update([
+                'status' => 'pending_payment',
+                'yookassa_payment_id' => $payment['id'],
+                'yookassa_payment_status' => $payment['status'],
+                'yookassa_idempotence_key' => $idempotenceKey,
+            ]);
+
+            $this->yooKassa->rememberPaymentAttempt(
+                $locked,
+                $payment['id'],
+                $payment['status'],
+                $confirmationUrl,
+                $amountFormatted,
+                $idempotenceKey,
+            );
+        });
+
+        return [
+            'confirmation_url' => $confirmationUrl,
+            'reused' => false,
+            'order' => $order->fresh(['items', 'user']) ?? $order,
+        ];
+    }
+
+    private function reserveNextPaymentAttempt(Order $order, string $amountFormatted): string
+    {
+        return DB::transaction(function () use ($order, $amountFormatted) {
+            $locked = Order::query()->lockForUpdate()->find($order->id);
+            if ($locked === null) {
+                throw new PaymentLinkException('Заказ не найден', 404);
+            }
+
+            $open = OrderPayment::query()
+                ->where('order_id', $locked->id)
+                ->whereNull('yookassa_payment_id')
+                ->latest('id')
+                ->first();
+
+            if ($open !== null) {
+                $locked->update(['yookassa_idempotence_key' => $open->idempotence_key]);
+
+                return $open->idempotence_key;
+            }
+
+            $attempt = OrderPayment::query()->where('order_id', $locked->id)->count() + 1;
+            $key = sprintf('order:%d:payment:attempt:%d', $locked->id, $attempt);
+            while (OrderPayment::query()->where('idempotence_key', $key)->exists()
+                || Order::query()->where('yookassa_idempotence_key', $key)->whereKeyNot($locked->id)->exists()) {
+                $attempt++;
+                $key = sprintf('order:%d:payment:attempt:%d', $locked->id, $attempt);
+            }
+
+            OrderPayment::query()->create([
+                'order_id' => $locked->id,
+                'yookassa_payment_id' => null,
+                'idempotence_key' => $key,
+                'amount' => $amountFormatted,
+                'status' => 'pending',
+            ]);
+
+            if ($this->canUseYookassaIdempotenceKeyColumn()) {
+                $locked->update(['yookassa_idempotence_key' => $key]);
+            }
+
+            return $key;
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     */
+    private function confirmationUrlFromPayment(array $payment, Order $order, string $paymentId): ?string
+    {
+        $url = data_get($payment, 'confirmation.confirmation_url');
+        if (! is_string($url) || $url === '') {
+            $stored = OrderPayment::query()
+                ->where('order_id', $order->id)
+                ->where('yookassa_payment_id', $paymentId)
+                ->value('confirmation_url');
+            $url = is_string($stored) ? $stored : '';
+        }
+
+        if ($url === '') {
+            return null;
+        }
+
+        return $this->assertYooKassaConfirmationUrl($url);
+    }
+
+    private function assertYooKassaConfirmationUrl(string $url): string
+    {
+        $parts = parse_url($url);
+        $scheme = strtolower((string) (is_array($parts) ? ($parts['scheme'] ?? '') : ''));
+        $host = strtolower((string) (is_array($parts) ? ($parts['host'] ?? '') : ''));
+        $allowed = $host === 'yoomoney.ru'
+            || $host === 'yookassa.ru'
+            || str_ends_with($host, '.yoomoney.ru')
+            || str_ends_with($host, '.yookassa.ru');
+
+        if ($scheme !== 'https' || ! $allowed) {
+            throw new PaymentLinkException('Платёжная система вернула некорректную ссылку');
+        }
+
+        return $url;
     }
 
     private function canUseYookassaIdempotenceKeyColumn(): bool

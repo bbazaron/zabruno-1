@@ -83,6 +83,7 @@ const ordersLoading = ref(false)
 const orders = ref<BackendOrder[]>([])
 const expandedByOrderId = ref<Record<number, boolean>>({})
 const deletingOrderId = ref<number | null>(null)
+const payingOrderId = ref<number | null>(null)
 
 /** Фильтры списка заказов */
 const filterOrderOrPhone = ref('')
@@ -285,6 +286,44 @@ function openOrder(orderId: number) {
 
 function userCanDeleteOrder(status: string): boolean {
   return String(status).toLowerCase().replace(/\s+/g, '_') === 'pending_payment'
+}
+
+function userCanPayOrder(status: string): boolean {
+  const key = String(status).toLowerCase().replace(/\s+/g, '_')
+  return key === 'pending_payment' || key === 'payment_cancelled'
+}
+
+async function payOrder(orderId: number) {
+  if (payingOrderId.value !== null) return
+  const token = getStoredToken()
+  if (!token) {
+    router.push('/login')
+    return
+  }
+  payingOrderId.value = orderId
+  try {
+    const { data } = await axios.post<{ confirmation_url?: string }>(
+      `/api/orders/${orderId}/pay`,
+      {},
+      {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+    const url = String(data?.confirmation_url ?? '').trim()
+    if (!url) {
+      showToast('Не удалось получить ссылку на оплату', 'error')
+      return
+    }
+    window.location.assign(url)
+  } catch (err: any) {
+    const msg = err?.response?.data?.message
+    showToast(typeof msg === 'string' ? msg : 'Не удалось перейти к оплате', 'error')
+  } finally {
+    payingOrderId.value = null
+  }
 }
 
 async function deleteMyOrder(order: BackendOrder) {
@@ -619,6 +658,17 @@ onMounted(() => {
             <div class="flex flex-wrap gap-2 shrink-0">
               <Button variant="primary" size="sm" @click.stop="openOrder(order.id)">
                 Подробнее
+              </Button>
+              <Button
+                v-if="userCanPayOrder(order.status)"
+                type="button"
+                variant="primary"
+                size="sm"
+                :disabled="payingOrderId !== null"
+                :aria-busy="payingOrderId === order.id"
+                @click.stop="payOrder(order.id)"
+              >
+                {{ payingOrderId === order.id ? 'Переход к оплате…' : 'Оплатить' }}
               </Button>
               <Button
                 v-if="userCanDeleteOrder(order.status)"

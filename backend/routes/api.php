@@ -35,6 +35,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/getOrders', [OrderController::class, 'getOrders']);
     Route::get('/payment/status/latest', [OrderController::class, 'latestPaymentStatus']);
     Route::delete('/orders/{id}', [OrderController::class, 'deleteMyOrder']);
+    Route::post('/orders/{id}/pay', [OrderController::class, 'payMyOrder'])->middleware('throttle:6,1');
     Route::post('/createCartOrder', [OrderController::class, 'createCartOrder']);
     Route::get('/cart', [CartController::class, 'index']);
     Route::post('/cart/add', [CartController::class, 'add']);
@@ -49,6 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/admin/orders/{id}/status', [OrderController::class, 'updateAdminOrderStatus']);
         Route::delete('/admin/orders/{id}', [OrderController::class, 'deleteAdminOrder']);
         Route::post('/admin/orders/{id}/refunds', [OrderController::class, 'createAdminRefund']);
+        Route::post('/admin/orders/{id}/payment-link', [OrderController::class, 'adminPaymentLink'])->middleware('throttle:6,1');
 
         Route::get('/admin/settings/home-order-buttons', [AdminHomeOrderButtonsSettingController::class, 'show']);
         Route::patch('/admin/settings/home-order-buttons', [AdminHomeOrderButtonsSettingController::class, 'update']);

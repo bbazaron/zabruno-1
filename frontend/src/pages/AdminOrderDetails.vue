@@ -129,6 +129,8 @@ const draft = ref<OrderDraft | null>(null)
 const savingOrder = ref(false)
 
 const ORDER_STATUSES = [
+  { value: 'pending_payment', label: 'Ожидает оплаты' },
+  { value: 'payment_cancelled', label: 'Оплата не прошла' },
   { value: 'pending', label: 'Ожидает' },
   { value: 'confirmed', label: 'Подтверждён' },
   { value: 'processing', label: 'В работе' },
@@ -142,6 +144,8 @@ const ORDER_STATUSES = [
 const selectedStatus = ref<string>('pending')
 const savingStatus = ref(false)
 const refunding = ref(false)
+const issuingPaymentLink = ref(false)
+const paymentLink = ref('')
 const deletingEntireOrder = ref(false)
 const refundAmount = ref<string>('')
 const refundReasonCode = ref<string>('customer_request')
@@ -154,10 +158,7 @@ const REFUND_REASONS = [
 ] as const
 
 function normalizeStatusForSelect(status: string | null | undefined): string {
-  const key = String(status ?? '').toLowerCase().replace(/\s+/g, '_')
-  if (key === 'pending_payment') return 'pending'
-  if (key === 'payment_cancelled') return 'cancelled'
-  return key
+  return String(status ?? '').toLowerCase().replace(/\s+/g, '_')
 }
 
 const statusOptions = computed(() => {
@@ -298,6 +299,11 @@ const availableToRefund = computed(() => {
   const total = parseAmount(o.total_amount)
   const refunded = parseAmount(o.refunded_amount)
   return Math.max(0, Number((total - refunded).toFixed(2)))
+})
+
+const canIssuePaymentLink = computed(() => {
+  const key = String(order.value?.status ?? '').toLowerCase().replace(/\s+/g, '_')
+  return (key === 'pending_payment' || key === 'payment_cancelled') && parseAmount(order.value?.total_amount) > 0
 })
 
 const canRefund = computed(() => {
@@ -474,6 +480,7 @@ async function loadOrder() {
     })
     const o = response.data?.order ?? null
     order.value = o
+    paymentLink.value = ''
     if (o?.status) {
       selectedStatus.value = normalizeStatusForSelect(o.status)
     }
@@ -494,6 +501,58 @@ async function loadOrder() {
     showToast('Не удалось загрузить заказ', 'error')
   } finally {
     loading.value = false
+  }
+}
+
+async function issuePaymentLink() {
+  const token = getStoredToken()
+  if (!token || !order.value || issuingPaymentLink.value) return
+  issuingPaymentLink.value = true
+  try {
+    const response = await axios.post(
+      `/api/admin/orders/${orderId.value}/payment-link`,
+      {},
+      {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    )
+    const url = String(response.data?.confirmation_url ?? '').trim()
+    if (!url) {
+      showToast('Не удалось получить ссылку на оплату', 'error')
+      return
+    }
+    paymentLink.value = url
+    if (response.data?.order) {
+      order.value = response.data.order
+      if (order.value?.status) {
+        selectedStatus.value = normalizeStatusForSelect(order.value.status)
+      }
+    }
+    showToast(
+      response.data?.reused ? 'Открыта уже созданная ссылка на оплату' : 'Ссылка на оплату готова',
+      'success',
+    )
+  } catch (err: any) {
+    const msg = err?.response?.data?.message
+    showToast(typeof msg === 'string' ? msg : 'Не удалось подготовить ссылку на оплату', 'error')
+    if (err?.response?.status === 422) {
+      await loadOrder()
+    }
+  } finally {
+    issuingPaymentLink.value = false
+  }
+}
+
+async function copyPaymentLink() {
+  if (!paymentLink.value) return
+  try {
+    await navigator.clipboard.writeText(paymentLink.value)
+    showToast('Ссылка скопирована', 'success')
+  } catch {
+    showToast('Не удалось скопировать ссылку', 'error')
   }
 }
 
@@ -798,6 +857,39 @@ onMounted(() => {
             </div>
             <p v-if="!canRefund" class="mt-2 text-xs text-slate-500">
               Возврат недоступен: {{ refundUnavailableReason }}
+            </p>
+          </div>
+          <div v-if="canIssuePaymentLink" class="mt-4 border-t border-neutral-100 pt-4">
+            <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                :disabled="issuingPaymentLink"
+                :aria-busy="issuingPaymentLink"
+                @click="issuePaymentLink"
+              >
+                {{ issuingPaymentLink ? 'Готовим ссылку...' : 'Ссылка на оплату' }}
+              </Button>
+              <input
+                v-if="paymentLink"
+                :value="paymentLink"
+                type="text"
+                readonly
+                class="w-full lg:flex-1 border border-neutral-300 rounded-lg px-3 py-2 text-sm bg-neutral-50 text-slate-900"
+              />
+              <Button
+                v-if="paymentLink"
+                type="button"
+                variant="outline"
+                size="md"
+                @click="copyPaymentLink"
+              >
+                Скопировать
+              </Button>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">
+              Ссылку можно отправить клиенту. Повторный запрос не создаёт второй платёж, пока предыдущий ещё ожидает оплату.
             </p>
           </div>
         </Card>
