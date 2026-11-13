@@ -525,6 +525,17 @@ onMounted(() => {
                 {{ statusBadge(order.status).label }}
                 <Info :size="12" class="opacity-70 shrink-0" aria-hidden="true" />
               </span>
+              <Button
+                v-if="userCanPayOrder(order.status)"
+                type="button"
+                variant="primary"
+                size="sm"
+                :disabled="payingOrderId !== null"
+                :aria-busy="payingOrderId === order.id"
+                @click.stop="payOrder(order.id)"
+              >
+                {{ payingOrderId === order.id ? 'Переход к оплате…' : 'Оплатить' }}
+              </Button>
             </div>
             <button
               type="button"
@@ -658,17 +669,6 @@ onMounted(() => {
             <div class="flex flex-wrap gap-2 shrink-0">
               <Button variant="primary" size="sm" @click.stop="openOrder(order.id)">
                 Подробнее
-              </Button>
-              <Button
-                v-if="userCanPayOrder(order.status)"
-                type="button"
-                variant="primary"
-                size="sm"
-                :disabled="payingOrderId !== null"
-                :aria-busy="payingOrderId === order.id"
-                @click.stop="payOrder(order.id)"
-              >
-                {{ payingOrderId === order.id ? 'Переход к оплате…' : 'Оплатить' }}
               </Button>
               <Button
                 v-if="userCanDeleteOrder(order.status)"

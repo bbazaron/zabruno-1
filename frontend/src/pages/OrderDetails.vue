@@ -323,17 +323,6 @@ onMounted(() => {
             К списку заказов
           </Button>
           <Button
-            v-if="order && userCanPayOrder(order.status)"
-            type="button"
-            variant="primary"
-            size="md"
-            :disabled="payingOrder"
-            :aria-busy="payingOrder"
-            @click="payOrder"
-          >
-            {{ payingOrder ? 'Переход к оплате…' : 'Оплатить' }}
-          </Button>
-          <Button
             v-if="order && userCanDeleteOrder(order.status)"
             type="button"
             variant="outline"
@@ -378,6 +367,17 @@ onMounted(() => {
                 {{ statusBadge(order.status).label }}
                 <Info :size="12" class="opacity-70 shrink-0" aria-hidden="true" />
               </span>
+              <Button
+                v-if="userCanPayOrder(order.status)"
+                type="button"
+                variant="primary"
+                size="sm"
+                :disabled="payingOrder"
+                :aria-busy="payingOrder"
+                @click="payOrder"
+              >
+                {{ payingOrder ? 'Переход к оплате…' : 'Оплатить' }}
+              </Button>
             </div>
           </div>
 
